@@ -32,7 +32,7 @@
 
 #ifndef __SDS_H
 #define __SDS_H
-
+//1M
 #define SDS_MAX_PREALLOC (1024*1024)
 
 #include <sys/types.h>
@@ -51,8 +51,21 @@ struct __attribute__ ((__packed__)) sdshdr8 {
     uint8_t len; /* used */
     uint8_t alloc; /* excluding the header and null terminator */
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
+	//0长度数组 char buf[]等价于char buf[0]
     char buf[];
 };
+/*    0长度数组
+ *    ----------------
+ *    |    len       |
+ *    |——————————————|
+ *    |    alloc     |
+ *    |——————————————|
+ *    |    flags     |
+ *    |——————————————|<----buf
+ *    |    buf[]     |
+ *    |              |
+ *    |——————————————|
+ */
 struct __attribute__ ((__packed__)) sdshdr16 {
     uint16_t len; /* used */
     uint16_t alloc; /* excluding the header and null terminator */
@@ -68,6 +81,7 @@ struct __attribute__ ((__packed__)) sdshdr32 {
 struct __attribute__ ((__packed__)) sdshdr64 {
     uint64_t len; /* used */
     uint64_t alloc; /* excluding the header and null terminator */
+	//sdsnhdr的类型
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
     char buf[];
 };
@@ -79,17 +93,23 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 #define SDS_TYPE_64 4
 #define SDS_TYPE_MASK 7
 #define SDS_TYPE_BITS 3
+//获取sds结构体变量的首地址sh
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
+//获取sdshdr的首地址，s为buf的地址
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
+//右移3bits
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
 
+//返回sds的已使用空间字节数
 static inline size_t sdslen(const sds s) {
+	//s[-1]即:*(s-1)
     unsigned char flags = s[-1];
+	//判断结构体的类型
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
-            return SDS_TYPE_5_LEN(flags);
+            return SDS_TYPE_5_LEN(flags);//高5bits表示buf len
         case SDS_TYPE_8:
-            return SDS_HDR(8,s)->len;
+            return __SDS_HR(8,s)->len;
         case SDS_TYPE_16:
             return SDS_HDR(16,s)->len;
         case SDS_TYPE_32:
@@ -100,6 +120,7 @@ static inline size_t sdslen(const sds s) {
     return 0;
 }
 
+//获取可用的buf空间大小，即：free
 static inline size_t sdsavail(const sds s) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -125,7 +146,7 @@ static inline size_t sdsavail(const sds s) {
     }
     return 0;
 }
-
+//设置sds结构体len
 static inline void sdssetlen(sds s, size_t newlen) {
     unsigned char flags = s[-1];
     switch(flags&SDS_TYPE_MASK) {
@@ -174,7 +195,7 @@ static inline void sdsinclen(sds s, size_t inc) {
             break;
     }
 }
-
+//alloc不包括\0
 /* sdsalloc() = sdsavail() + sdslen() */
 static inline size_t sdsalloc(const sds s) {
     unsigned char flags = s[-1];
