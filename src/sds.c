@@ -38,7 +38,7 @@
 #include <limits.h>
 #include "sds.h"
 #include "sdsalloc.h"
-
+//获取sds结构体的HDR（len alloc flag）字段大小
 static inline int sdsHdrSize(char type) {
     switch(type&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -54,7 +54,7 @@ static inline int sdsHdrSize(char type) {
     }
     return 0;
 }
-
+//根据string_size大小来获取sds类型
 static inline char sdsReqType(size_t string_size) {
     if (string_size < 1<<5)
         return SDS_TYPE_5;
@@ -81,24 +81,29 @@ static inline char sdsReqType(size_t string_size) {
  * You can print the string with printf() as there is an implicit \0 at the
  * end of the string. However the string is binary safe and can contain
  * \0 characters in the middle, as the length is stored in the sds header. */
+//创建一个sds字符串，字符串内容为init指针指向的内容，大小为initlen.
 sds sdsnewlen(const void *init, size_t initlen) {
     void *sh;
     sds s;
     char type = sdsReqType(initlen);
     /* Empty strings are usually created in order to append. Use type 8
      * since type 5 is not good at this. */
+	//因为type 5没有free字段，只有len字段
     if (type == SDS_TYPE_5 && initlen == 0) type = SDS_TYPE_8;
     int hdrlen = sdsHdrSize(type);
     unsigned char *fp; /* flags pointer. */
 
     sh = s_malloc(hdrlen+initlen+1);
+	//如果init为NULL，则buff内容为0
     if (!init)
         memset(sh, 0, hdrlen+initlen+1);
     if (sh == NULL) return NULL;
     s = (char*)sh+hdrlen;
+	//flags字段
     fp = ((unsigned char*)s)-1;
     switch(type) {
         case SDS_TYPE_5: {
+			//低3bits位type，高5bits位buff的length
             *fp = type | (initlen << SDS_TYPE_BITS);
             break;
         }
@@ -133,6 +138,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
     }
     if (initlen && init)
         memcpy(s, init, initlen);
+	//buff以0结尾
     s[initlen] = '\0';
     return s;
 }
@@ -194,8 +200,10 @@ void sdsclear(sds s) {
  *
  * Note: this does not change the *length* of the sds string as returned
  * by sdslen(), but only the free buffer space we have. */
+//保证alloc-len >= addlen
 sds sdsMakeRoomFor(sds s, size_t addlen) {
     void *sh, *newsh;
+	//avail=alloc-len
     size_t avail = sdsavail(s);
     size_t len, newlen;
     char type, oldtype = s[-1] & SDS_TYPE_MASK;
@@ -207,10 +215,11 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     len = sdslen(s);
     sh = (char*)s-sdsHdrSize(oldtype);
     newlen = (len+addlen);
+	//如果newlen小于1M,则分配和newlen同样大小的未使用空间
     if (newlen < SDS_MAX_PREALLOC)
         newlen *= 2;
     else
-        newlen += SDS_MAX_PREALLOC;
+        newlen += SDS_MAX_PREALLOC;//如果newlen的长度大于1M，则分配1M的未使用空间.
 
     type = sdsReqType(newlen);
 
@@ -436,6 +445,7 @@ sds sdscpy(sds s, const char *t) {
  * The function returns the length of the null-terminated string
  * representation stored at 's'. */
 #define SDS_LLSTR_SIZE 21
+//将longlong类型转换为string
 int sdsll2str(char *s, long long value) {
     char *p, aux;
     unsigned long long v;
@@ -529,6 +539,7 @@ sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
         va_copy(cpy,ap);
         vsnprintf(buf, buflen, fmt, cpy);
         va_end(cpy);
+		//判断buf空间是否够用
         if (buf[buflen-2] != '\0') {
             if (buf != staticbuf) s_free(buf);
             buflen *= 2;
@@ -699,6 +710,7 @@ sds sdstrim(sds s, const char *cset) {
     while(sp <= end && strchr(cset, *sp)) sp++;
     while(ep > sp && strchr(cset, *ep)) ep--;
     len = (sp > ep) ? 0 : ((ep-sp)+1);
+	//memmove可以处理sp与s重叠情况即： sp>s&&s+len>sp的情况
     if (s != sp) memmove(s, sp, len);
     s[len] = '\0';
     sdssetlen(s,len);
