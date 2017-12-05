@@ -32,13 +32,14 @@
 #define __ADLIST_H__
 
 /* Node, List, and Iterator are the only data structures used currently. */
-
+//链表Node,双向非循环链表
 typedef struct listNode {
     struct listNode *prev;
     struct listNode *next;
     void *value;
 } listNode;
 
+//迭代器
 typedef struct listIter {
     listNode *next;
     int direction;
@@ -48,9 +49,9 @@ typedef struct list {
     listNode *head;
     listNode *tail;
     void *(*dup)(void *ptr);
-    void (*free)(void *ptr);
+    void (*free)(void *ptr);//用于释放Node中value字段
     int (*match)(void *ptr, void *key);
-    unsigned long len;
+    unsigned long len;//链表的长度
 } list;
 
 /* Functions implemented as macros */
