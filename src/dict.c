@@ -108,6 +108,21 @@ static void _dictReset(dictht *ht)
 }
 
 /* Create a new hash table */
+/* __________
+ * |  type   |
+ * |_________|
+ * |privdata |
+ * |_________|
+ * |  ht[0]  |
+ * |_________|
+ * |  ht[1]  |
+ * |_________|
+ * |rehashidx|
+ * |_________|
+ * |iterators|
+ * |_________|
+ */
+//创建字典
 dict *dictCreate(dictType *type,
         void *privDataPtr)
 {
@@ -118,6 +133,7 @@ dict *dictCreate(dictType *type,
 }
 
 /* Initialize the hash table */
+//初始化hash table
 int _dictInit(dict *d, dictType *type,
         void *privDataPtr)
 {
@@ -132,6 +148,7 @@ int _dictInit(dict *d, dictType *type,
 
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
+//设置hash table的buckets
 int dictResize(dict *d)
 {
     int minimal;
@@ -144,6 +161,7 @@ int dictResize(dict *d)
 }
 
 /* Expand or create the hash table */
+//size 为hash table节点的数量
 int dictExpand(dict *d, unsigned long size)
 {
     dictht n; /* the new hash table */
@@ -172,7 +190,7 @@ int dictExpand(dict *d, unsigned long size)
 
     /* Prepare a second hash table for incremental rehashing */
     d->ht[1] = n;
-    d->rehashidx = 0;
+    d->rehashidx = 0;//进行rehash的标志
     return DICT_OK;
 }
 
@@ -201,6 +219,7 @@ int dictRehash(dict *d, int n) {
         }
         de = d->ht[0].table[d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
+		//rehase一个bucket
         while(de) {
             unsigned int h;
 
@@ -294,7 +313,7 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
     int index;
     dictEntry *entry;
     dictht *ht;
-
+	//如果添加节点时，正处于rehase状态，则进行一次rehash操作
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
     /* Get the index of the new element, or -1 if

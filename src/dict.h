@@ -43,7 +43,7 @@
 
 /* Unused arguments generate annoying warnings... */
 #define DICT_NOTUSED(V) ((void) V)
-
+//hash table节点
 typedef struct dictEntry {
     void *key;
     union {
@@ -54,7 +54,7 @@ typedef struct dictEntry {
     } v;
     struct dictEntry *next;
 } dictEntry;
-
+//类型特定函数
 typedef struct dictType {
     uint64_t (*hashFunction)(const void *key);
     void *(*keyDup)(void *privdata, const void *key);
@@ -66,13 +66,14 @@ typedef struct dictType {
 
 /* This is our hash table structure. Every dictionary has two of this as we
  * implement incremental rehashing, for the old to the new table. */
+//hash table
 typedef struct dictht {
     dictEntry **table;
     unsigned long size;
     unsigned long sizemask;
     unsigned long used;
 } dictht;
-
+//字典
 typedef struct dict {
     dictType *type;
     void *privdata;
@@ -101,10 +102,11 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 #define DICT_HT_INITIAL_SIZE     4
 
 /* ------------------------------- Macros ------------------------------------*/
+//valDestructor销毁值的函数
 #define dictFreeVal(d, entry) \
     if ((d)->type->valDestructor) \
         (d)->type->valDestructor((d)->privdata, (entry)->v.val)
-
+//valDup复制值的函数
 #define dictSetVal(d, entry, _val_) do { \
     if ((d)->type->valDup) \
         (entry)->v.val = (d)->type->valDup((d)->privdata, _val_); \
@@ -120,7 +122,7 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 
 #define dictSetDoubleVal(entry, _val_) \
     do { (entry)->v.d = _val_; } while(0)
-
+//keyDestructor销毁键的函数
 #define dictFreeKey(d, entry) \
     if ((d)->type->keyDestructor) \
         (d)->type->keyDestructor((d)->privdata, (entry)->key)
