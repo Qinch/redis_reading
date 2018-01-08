@@ -889,8 +889,10 @@ unsigned char *ziplistMerge(unsigned char **first, unsigned char **second) {
     if (*first == *second)
         return NULL;
 
+	//zl total bytes
     size_t first_bytes = intrev32ifbe(ZIPLIST_BYTES(*first));
-    size_t first_len = intrev16ifbe(ZIPLIST_LENGTH(*first));
+    //zl totol entry number
+	size_t first_len = intrev16ifbe(ZIPLIST_LENGTH(*first));
 
     size_t second_bytes = intrev32ifbe(ZIPLIST_BYTES(*second));
     size_t second_len = intrev16ifbe(ZIPLIST_LENGTH(*second));
@@ -907,13 +909,15 @@ unsigned char *ziplistMerge(unsigned char **first, unsigned char **second) {
         target_bytes = first_bytes;
         source = *second;
         source_bytes = second_bytes;
-        append = 1;
+        //appending
+		append = 1;
     } else {
         /* else, retain second, prepend first to second. */
         target = *second;
         target_bytes = second_bytes;
         source = *first;
         source_bytes = first_bytes;
+		//prepanding
         append = 0;
     }
 
@@ -926,6 +930,7 @@ unsigned char *ziplistMerge(unsigned char **first, unsigned char **second) {
     zllength = zllength < UINT16_MAX ? zllength : UINT16_MAX;
 
     /* Save offset positions before we start ripping memory apart. */
+	//last entry offset
     size_t first_offset = intrev32ifbe(ZIPLIST_TAIL_OFFSET(*first));
     size_t second_offset = intrev32ifbe(ZIPLIST_TAIL_OFFSET(*second));
 
