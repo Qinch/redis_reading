@@ -38,6 +38,7 @@
  * by the user before to call AlFreeList().
  *
  * On error, NULL is returned. Otherwise the pointer to the new list. */
+//创建listhead节点
 list *listCreate(void)
 {
     struct list *list;
@@ -45,6 +46,7 @@ list *listCreate(void)
     if ((list = zmalloc(sizeof(*list))) == NULL)
         return NULL;
     list->head = list->tail = NULL;
+	//list中节点的数量
     list->len = 0;
     list->dup = NULL;
     list->free = NULL;
@@ -53,6 +55,7 @@ list *listCreate(void)
 }
 
 /* Remove all the elements from the list without destroying the list itself. */
+//删除list中所有的list节点，保留listhead节点
 void listEmpty(list *list)
 {
     unsigned long len;
@@ -73,6 +76,7 @@ void listEmpty(list *list)
 /* Free the whole list.
  *
  * This function can't fail. */
+//释放list，包括listhead和所有listnode
 void listRelease(list *list)
 {
     listEmpty(list);
@@ -93,6 +97,7 @@ list *listAddNodeHead(list *list, void *value)
         return NULL;
     node->value = value;
     if (list->len == 0) {
+		//list中只有listhead，没有listnode情况
         list->head = list->tail = node;
         node->prev = node->next = NULL;
     } else {
@@ -138,8 +143,10 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
         return NULL;
     node->value = value;
     if (after) {
+		//在old_node指向的节点后边插入node节点
         node->prev = old_node;
         node->next = old_node->next;
+		//如果old_node指向的节点是list中尾节点，则更新list->tail
         if (list->tail == old_node) {
             list->tail = node;
         }
@@ -164,6 +171,7 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
  * It's up to the caller to free the private value of the node.
  *
  * This function can't fail. */
+//删除list中node指向的节点
 void listDelNode(list *list, listNode *node)
 {
     if (node->prev)
@@ -344,6 +352,7 @@ void listRotate(list *list) {
 
 /* Add all the elements of the list 'o' at the end of the
  * list 'l'. The list 'other' remains empty but otherwise valid. */
+//list o保持empty,不释放其listhead
 void listJoin(list *l, list *o) {
     if (o->head)
         o->head->prev = l->tail;

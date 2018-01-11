@@ -46,7 +46,9 @@ typedef struct listIter {
 } listIter;
 
 typedef struct list {
+	//指向list中第一个listnode节点
     listNode *head;
+	//指向list中最后一个listnode节点
     listNode *tail;
     void *(*dup)(void *ptr);
     void (*free)(void *ptr);//用于释放Node中value字段
@@ -62,7 +64,9 @@ typedef struct list {
 #define listNextNode(n) ((n)->next)
 #define listNodeValue(n) ((n)->value)
 
+//设置dup函数指针的值
 #define listSetDupMethod(l,m) ((l)->dup = (m))
+//设置free value的函数指针
 #define listSetFreeMethod(l,m) ((l)->free = (m))
 #define listSetMatchMethod(l,m) ((l)->match = (m))
 
