@@ -277,6 +277,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * dictionary so that the hash table automatically migrates from H1 to H2
  * while it is actively used. */
 static void _dictRehashStep(dict *d) {
+	//如果安全迭代器的数量为0
     if (d->iterators == 0) dictRehash(d,1);
 }
 

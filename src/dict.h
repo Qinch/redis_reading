@@ -79,6 +79,7 @@ typedef struct dict {
     void *privdata;
     dictht ht[2];
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */
+	//安全迭代器的数量
     unsigned long iterators; /* number of iterators currently running */
 } dict;
 
