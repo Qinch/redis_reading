@@ -68,6 +68,7 @@ int zslLexValueLteMax(sds value, zlexrangespec *spec);
 
 /* Create a skiplist node with the specified number of levels.
  * The SDS string 'ele' is referenced by the node after the call. */
+//闯将一个skiplist node(节点)
 zskiplistNode *zslCreateNode(int level, double score, sds ele) {
     zskiplistNode *zn =
         zmalloc(sizeof(*zn)+level*sizeof(struct zskiplistLevel));
@@ -77,6 +78,7 @@ zskiplistNode *zslCreateNode(int level, double score, sds ele) {
 }
 
 /* Create a new skiplist. */
+//创建一个skiplist
 zskiplist *zslCreate(void) {
     int j;
     zskiplist *zsl;
@@ -129,6 +131,7 @@ int zslRandomLevel(void) {
 /* Insert a new node in the skiplist. Assumes the element does not already
  * exist (up to the caller to enforce that). The skiplist takes ownership
  * of the passed SDS string 'ele'. */
+//在skiplist中插入一个node
 zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     unsigned int rank[ZSKIPLIST_MAXLEVEL];
@@ -138,6 +141,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     x = zsl->header;
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
+	//rank[i]=rank[i+1]
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
         while (x->level[i].forward &&
                 (x->level[i].forward->score < score ||
@@ -147,6 +151,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
             rank[i] += x->level[i].span;
             x = x->level[i].forward;
         }
+	//为待插入节点的前一个节点的首地址
         update[i] = x;
     }
     /* we assume the element is not already inside, since we allow duplicated
@@ -160,6 +165,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
             update[i] = zsl->header;
             update[i]->level[i].span = zsl->length;
         }
+	//调整skiplist的最大层数
         zsl->level = level;
     }
     x = zslCreateNode(level,score,ele);
@@ -173,6 +179,7 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     }
 
     /* increment span for untouched levels */
+    //新增节点的层高位level,更新level以上的层数的span
     for (i = level; i < zsl->level; i++) {
         update[i]->level[i].span++;
     }
