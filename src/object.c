@@ -203,6 +203,7 @@ robj *createQuicklistObject(void) {
     return o;
 }
 
+//使用ziplist实现的list对象
 robj *createZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_LIST,zl);
@@ -210,13 +211,14 @@ robj *createZiplistObject(void) {
     return o;
 }
 
+//采用hash table实现的set对象
 robj *createSetObject(void) {
     dict *d = dictCreate(&setDictType,NULL);
     robj *o = createObject(OBJ_SET,d);
     o->encoding = OBJ_ENCODING_HT;
     return o;
 }
-
+//采用intset实现的set对象
 robj *createIntsetObject(void) {
     intset *is = intsetNew();
     robj *o = createObject(OBJ_SET,is);
@@ -224,6 +226,7 @@ robj *createIntsetObject(void) {
     return o;
 }
 
+//采用ziplist实现hash对象
 robj *createHashObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_HASH, zl);
@@ -231,6 +234,7 @@ robj *createHashObject(void) {
     return o;
 }
 
+//采用skiplist+dict实现有序集合
 robj *createZsetObject(void) {
     zset *zs = zmalloc(sizeof(*zs));
     robj *o;
@@ -242,6 +246,7 @@ robj *createZsetObject(void) {
     return o;
 }
 
+//采用ziplist实现有序集合对象
 robj *createZsetZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_ZSET,zl);
