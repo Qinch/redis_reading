@@ -69,6 +69,7 @@ robj *createObject(int type, void *ptr) {
  * robj *myobject = makeObjectShared(createObject(...));
  *
  */
+//设置对象为共享对象
 robj *makeObjectShared(robj *o) {
     serverAssert(o->refcount == 1);
     o->refcount = OBJ_SHARED_REFCOUNT;
@@ -77,6 +78,7 @@ robj *makeObjectShared(robj *o) {
 
 /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
+//创建指向sds数据结构的对象，ptr为字符串指针，len为字符串的长度
 robj *createRawStringObject(const char *ptr, size_t len) {
     return createObject(OBJ_STRING, sdsnewlen(ptr,len));
 }
@@ -84,6 +86,8 @@ robj *createRawStringObject(const char *ptr, size_t len) {
 /* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
+//创建指向embstr数据结构的对象
+//如果ptr为NULL，则sds结构体的buf数组每个元素初始化为'\0'
 robj *createEmbeddedStringObject(const char *ptr, size_t len) {
 	//redisobj+sds
     robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
@@ -101,6 +105,7 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
         o->lru = LRU_CLOCK();
     }
 
+	//设置sds结构体的字段
     sh->len = len;
     sh->alloc = len;
     sh->flags = SDS_TYPE_8;
@@ -121,16 +126,18 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  * The current limit of 39 is chosen so that the biggest string object
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
+//embstr编码(encogding)是专门用于保存短字符串的一种优化编码方式
 robj *createStringObject(const char *ptr, size_t len) {
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
-        return createEmbeddedStringObject(ptr,len);
+        return createEmbeddedStringObject(ptr,len);//embstr
     else
-        return createRawStringObject(ptr,len);
+        return createRawStringObject(ptr,len); //sds
 }
 
-// 
+//采用int编码来表示string对象 
 robj *createStringObjectFromLongLong(long long value) {
     robj *o;
+	//如果value属于[0, 10000]这个区间，则采用共享对象
     if (value >= 0 && value < OBJ_SHARED_INTEGERS) {
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
@@ -140,6 +147,7 @@ robj *createStringObjectFromLongLong(long long value) {
             o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*)((long)value);
         } else {
+			//如果value的值超出long类型表示的范围
             o = createObject(OBJ_STRING,sdsfromlonglong(value));
         }
     }
@@ -166,7 +174,7 @@ robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
  * will always result in a fresh object that is unshared (refcount == 1).
  *
  * The resulting object always has refcount set to 1. */
-//o->ptr重新拷贝一份，而不是浅拷贝
+//o->ptr重新拷贝一份(深拷贝)，而不是浅拷贝
 robj *dupStringObject(const robj *o) {
     robj *d;
 
