@@ -408,6 +408,7 @@ robj *tryObjectEncoding(robj *o) {
     /* We try some specialized encoding only for objects that are
      * RAW or EMBSTR encoded, in other words objects that are still
      * in represented by an actually array of chars. */
+	//sds or embstr
     if (!sdsEncodedObject(o)) return o;
 
     /* It's not safe to encode shared objects: shared objects can be shared
@@ -429,10 +430,12 @@ robj *tryObjectEncoding(robj *o) {
             value >= 0 &&
             value < OBJ_SHARED_INTEGERS)
         {
+			//0~10000共享对象
             decrRefCount(o);
             incrRefCount(shared.integers[value]);
             return shared.integers[value];
         } else {
+			//ptr=(void*)value
             if (o->encoding == OBJ_ENCODING_RAW) sdsfree(o->ptr);
             o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*) value;
@@ -660,9 +663,11 @@ int getLongLongFromObject(robj *o, long long *target) {
         value = 0;
     } else {
         serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
+		//encoding:sds or embstr
         if (sdsEncodedObject(o)) {
             if (string2ll(o->ptr,sdslen(o->ptr),&value) == 0) return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
+			//encoding:int
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");

@@ -68,6 +68,7 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
     long long milliseconds = 0; /* initialized to avoid any harmness warning */
 
     if (expire) {
+		//获取EX/PX后边参数的值
         if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
             return;
         if (milliseconds <= 0) {
@@ -101,8 +102,10 @@ void setCommand(client *c) {
 
     for (j = 3; j < c->argc; j++) {
         char *a = c->argv[j]->ptr;
+		//当解析参数为EX或者PX时，用于获取参数的值
         robj *next = (j == c->argc-1) ? NULL : c->argv[j+1];
 
+		//NX(NX与XX不能并存)
         if ((a[0] == 'n' || a[0] == 'N') &&
             (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' &&
             !(flags & OBJ_SET_XX))
@@ -117,6 +120,7 @@ void setCommand(client *c) {
                    (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' &&
                    !(flags & OBJ_SET_PX) && next)
         {
+			//EX与PX不能并存
             flags |= OBJ_SET_EX;
             unit = UNIT_SECONDS;
             expire = next;
@@ -135,6 +139,7 @@ void setCommand(client *c) {
         }
     }
 
+	//try to remove argv[2]->ptr中的space
     c->argv[2] = tryObjectEncoding(c->argv[2]);
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
 }
