@@ -548,9 +548,6 @@ int collateStringObjects(robj *a, robj *b) {
     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_COLL);
 }
 
-/* Equal string objects return 1 if the two objects are the same from the
- * point of view of a string comparison, otherwise 0 is returned. Note that
- * this function is faster then checking for (compareStringObject(a,b) == 0)
  * because it can perform some more optimization. */
 int equalStringObjects(robj *a, robj *b) {
     if (a->encoding == OBJ_ENCODING_INT &&
@@ -667,7 +664,11 @@ int getLongLongFromObject(robj *o, long long *target) {
         if (sdsEncodedObject(o)) {
             if (string2ll(o->ptr,sdslen(o->ptr),&value) == 0) return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
-			//encoding:int
+            value = (long)o->ptr;
+        } else {
+            serverPanic("Unknown string encoding");
+        }
+    }
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");
@@ -1110,11 +1111,6 @@ void memoryCommand(client *c) {
         addReplyMultiBulkLen(c,(14+mh->num_dbs)*2);
 
         addReplyBulkCString(c,"peak.allocated");
-        addReplyLongLong(c,mh->peak_allocated);
-
-        addReplyBulkCString(c,"total.allocated");
-        addReplyLongLong(c,mh->total_allocated);
-
         addReplyBulkCString(c,"startup.allocated");
         addReplyLongLong(c,mh->startup_allocated);
 
