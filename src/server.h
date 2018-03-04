@@ -588,7 +588,7 @@ typedef struct redisObject {
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits decreas time). */
     int refcount;
-    void *ptr;
+\   void *ptr;
 } robj;
 
 /* Macro used to initialize a Redis object allocated on the stack.
@@ -608,9 +608,10 @@ struct evictionPoolEntry; /* Defined in evict.c */
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
 typedef struct redisDb {
-	//数据库：每个htentry为一个key-value
+	//一个数据库：每个htentry为一个key-value
+	//该数据库称为：keyspace（键空间）
     dict *dict;                 /* The keyspace for this DB */
-	//过期时间
+	//所有键的过期时间
     dict *expires;              /* Timeout of keys with a timeout set */
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
     dict *ready_keys;           /* Blocked keys that received a PUSH */
@@ -674,27 +675,37 @@ typedef struct readyList {
 
 /* With multiplexing we need to take per-client state.
  * Clients are taken in a linked list. */
+//客户端状态
 typedef struct client {
     uint64_t id;            /* Client incremental unique ID. */
     int fd;                 /* Client socket. */
+	//指向客户端的当前目标数据库
+	//SELECT命令的实现：通过db指向服务器中不同的数据库
     redisDb *db;            /* Pointer to currently SELECTed DB. */
+	//客户端的名字
     robj *name;             /* As set by CLIENT SETNAME. */
+	//客户端的输入缓冲区
     sds querybuf;           /* Buffer we use to accumulate client queries. */
     sds pending_querybuf;   /* If this is a master, this buffer represents the
                                yet not applied replication stream that we
                                are receiving from the master. */
     size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. */
+	//客户端命令的参数个数
     int argc;               /* Num of arguments of current command. */
     robj **argv;            /* Arguments of current command. */
+	//指向命令所对应的redisCommand结构
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
     int multibulklen;       /* Number of multi bulk arguments left to read. */
     long bulklen;           /* Length of bulk argument in multi bulk request. */
+	//输出缓冲区：可变大小
     list *reply;            /* List of reply objects to send to the client. */
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
     size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
+	//客户端的创建时间
     time_t ctime;           /* Client creation time. */
+	//客户端与服务器之间的最后交互时间
     time_t lastinteraction; /* Time of the last interaction, used for timeout */
     time_t obuf_soft_limit_reached_time;
     int flags;              /* Client flags: CLIENT_* macros. */
@@ -726,12 +737,17 @@ typedef struct client {
     sds peerid;             /* Cached peer ID. */
 
     /* Response buffer */
+	//服务器输出缓冲区
     int bufpos;
     char buf[PROTO_REPLY_CHUNK_BYTES];
 } client;
 
+//save选项设置的保存条件:
+//save seconds changes
+//服务器在seconds秒内，至少修改changes次
 struct saveparam {
     time_t seconds;
+	//对数据库的修改次数
     int changes;
 };
 
@@ -1026,14 +1042,17 @@ struct redisServer {
                                       to child process. */
     sds aof_child_diff;             /* AOF diff accumulator child side. */
     /* RDB persistence */
+	//距离上一次RDB save之后，数据库进行了dirty次修改
     long long dirty;                /* Changes to DB from the last save */
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
     pid_t rdb_child_pid;            /* PID of RDB saving child */
+	//用于save选项数组
     struct saveparam *saveparams;   /* Save points array for RDB */
     int saveparamslen;              /* Number of saving points */
     char *rdb_filename;             /* Name of RDB file */
     int rdb_compression;            /* Use compression in RDB? */
     int rdb_checksum;               /* Use RDB checksum? */
+	//上一次数据库保存成功的时间
     time_t lastsave;                /* Unix time of last successful save */
     time_t lastbgsave_try;          /* Unix time of last attempted bgsave */
     time_t rdb_save_time_last;      /* Time used by last RDB save run. */
