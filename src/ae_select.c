@@ -41,9 +41,11 @@ typedef struct aeApiState {
 
 static int aeApiCreate(aeEventLoop *eventLoop) {
     aeApiState *state = zmalloc(sizeof(aeApiState));
-
+	//state==NULL
     if (!state) return -1;
+	//clear all bits in rfds
     FD_ZERO(&state->rfds);
+	//clear all bits in wfds
     FD_ZERO(&state->wfds);
     eventLoop->apidata = state;
     return 0;
@@ -51,6 +53,7 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
 
 static int aeApiResize(aeEventLoop *eventLoop, int setsize) {
     /* Just ensure we have enough room in the fd_set type. */
+	//FD_SETSIZE是fd_set中的描述符总数，其值通常是1024
     if (setsize >= FD_SETSIZE) return -1;
     return 0;
 }
@@ -67,6 +70,7 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     return 0;
 }
 
+//mask用于表示是监听fd的可读还是可写事件
 static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
 
@@ -78,9 +82,11 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     aeApiState *state = eventLoop->apidata;
     int retval, j, numevents = 0;
 
+	//_rfds和_wfds为select的实际参数，rfds和wfds为可读/可写文件描述的备份，因为select函数返回后会重写rfds和wfds
     memcpy(&state->_rfds,&state->rfds,sizeof(fd_set));
     memcpy(&state->_wfds,&state->wfds,sizeof(fd_set));
 
+	//select返回值为就绪的描述符数量
     retval = select(eventLoop->maxfd+1,
                 &state->_rfds,&state->_wfds,NULL,tvp);
     if (retval > 0) {
