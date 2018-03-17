@@ -98,6 +98,7 @@ static const rio rioBufferIO = {
 };
 
 void rioInitWithBuffer(rio *r, sds s) {
+	//c++ operator=
     *r = rioBufferIO;
     r->io.buffer.ptr = s;
     r->io.buffer.pos = 0;
@@ -189,8 +190,10 @@ static size_t rioFdsetWrite(rio *r, const void *buf, size_t len) {
      * parallelize while the kernel is sending data in background to
      * the TCP socket. */
     while(len) {
+		//chunk<=1024
         size_t count = len < 1024 ? len : 1024;
         int broken = 0;
+		//每个fd writes相同的buf
         for (j = 0; j < r->io.fdset.numfds; j++) {
             if (r->io.fdset.state[j] != 0) {
                 /* Skip FDs alraedy in error. */
@@ -208,6 +211,7 @@ static size_t rioFdsetWrite(rio *r, const void *buf, size_t len) {
                      * rio target, EWOULDBLOCK is returned only because of
                      * the SO_SNDTIMEO socket option, so we translate the error
                      * into one more recognizable by the user. */
+					//如果fd设置了SO_SNDTIMEO,超时
                     if (retval == -1 && errno == EWOULDBLOCK) errno = ETIMEDOUT;
                     break;
                 }
@@ -217,6 +221,7 @@ static size_t rioFdsetWrite(rio *r, const void *buf, size_t len) {
             if (nwritten != count) {
                 /* Mark this FD as broken. */
                 r->io.fdset.state[j] = errno;
+				//如果errno为0，则设置为EIO
                 if (r->io.fdset.state[j] == 0) r->io.fdset.state[j] = EIO;
             }
         }
