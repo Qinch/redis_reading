@@ -88,6 +88,9 @@
 #endif
 
 /* Define aof_fsync to fdatasync() in Linux and fsync() for all the rest */
+//fsync只对由fd指定的一个文件起作用，并且等待写磁盘操作结束才返回
+//fdatasyn类似于fsync函数，但它只影响文件的数据部分，fsync除了影响文件的数据部分、
+//还会同步更新文件的属性
 #ifdef __linux__
 #define aof_fsync fdatasync
 #else
