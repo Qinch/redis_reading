@@ -290,6 +290,7 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
         if (svalue != LLONG_MIN) {
             value = -svalue;
         } else {
+			//等价于value= -svalue - 1;
             value = ((unsigned long long) LLONG_MAX)+1;
         }
         negative = 1;
@@ -299,6 +300,7 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
     }
 
     /* Check length. */
+	//digits10返回value的长度，即需要多少bytes
     uint32_t const length = digits10(value)+negative;
     if (length >= dstlen) return 0;
 
@@ -307,6 +309,7 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
     dst[next] = '\0';
     next--;
     while (value >= 100) {
+		//获取余数在digits表中的索引
         int const i = (value % 100) * 2;
         value /= 100;
         dst[next] = digits[i + 1];

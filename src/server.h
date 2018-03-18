@@ -1045,10 +1045,12 @@ struct redisServer {
 	//距离上一次RDB save之后，数据库进行了dirty次修改
     long long dirty;                /* Changes to DB from the last save */
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
+	//RDB save子进程的ID
     pid_t rdb_child_pid;            /* PID of RDB saving child */
 	//用于save选项数组
     struct saveparam *saveparams;   /* Save points array for RDB */
     int saveparamslen;              /* Number of saving points */
+	//rdb文件名
     char *rdb_filename;             /* Name of RDB file */
     int rdb_compression;            /* Use compression in RDB? */
     int rdb_checksum;               /* Use RDB checksum? */
