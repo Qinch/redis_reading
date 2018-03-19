@@ -56,7 +56,7 @@ void aofClosePipes(void);
  * For this reason we use a list of blocks, every block is
  * AOF_RW_BUF_BLOCK_SIZE bytes.
  * ------------------------------------------------------------------------- */
-
+//list的每个block大小为10MB
 #define AOF_RW_BUF_BLOCK_SIZE (1024*1024*10)    /* 10 MB per block */
 
 typedef struct aofrwblock {
@@ -67,7 +67,9 @@ typedef struct aofrwblock {
 /* This function free the old AOF rewrite buffer if needed, and initialize
  * a fresh new one. It tests for server.aof_rewrite_buf_blocks equal to NULL
  * so can be used for the first initialization as well. */
+//reset一个old buffer或者创建一个新的buffer
 void aofRewriteBufferReset(void) {
+	//释放链表:释放list和listnode节点
     if (server.aof_rewrite_buf_blocks)
         listRelease(server.aof_rewrite_buf_blocks);
 
@@ -82,6 +84,7 @@ unsigned long aofRewriteBufferSize(void) {
     unsigned long size = 0;
 
     listRewind(server.aof_rewrite_buf_blocks,&li);
+	//遍历链表，获取total used
     while((ln = listNext(&li))) {
         aofrwblock *block = listNodeValue(ln);
         size += block->used;
@@ -92,7 +95,7 @@ unsigned long aofRewriteBufferSize(void) {
 /* Event handler used to send data to the child process doing the AOF
  * rewrite. We send pieces of our AOF differences buffer so that the final
  * write when the child finishes the rewrite will be small. */
-//发送给子进程的data
+//将aof buf通过write pipe发送给子进程
 void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
     listNode *ln;
     aofrwblock *block;
@@ -105,6 +108,7 @@ void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
     while(1) {
         ln = listFirst(server.aof_rewrite_buf_blocks);
         block = ln ? ln->value : NULL;
+		//if stop send diff to child, or the aof buf is null, delete event:aof_pipe_write_data_child AE_WRITABLE
         if (server.aof_stop_sending_diff || !block) {
             aeDeleteFileEvent(server.el,server.aof_pipe_write_data_to_child,
                               AE_WRITABLE);
@@ -113,6 +117,7 @@ void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
         if (block->used > 0) {
             nwritten = write(server.aof_pipe_write_data_to_child,
                              block->buf,block->used);
+			//写错误
             if (nwritten <= 0) return;
 			//更新aof重写缓冲区
             memmove(block->buf,block->buf+nwritten,block->used-nwritten);
@@ -125,6 +130,7 @@ void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
 }
 
 /* Append data to the AOF rewrite buffer, allocating new blocks if needed. */
+//将s写入aof buff,如果当前block的free < len,则增加新的block
 void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
     listNode *ln = listLast(server.aof_rewrite_buf_blocks);
     aofrwblock *block = ln ? ln->value : NULL;
@@ -143,16 +149,19 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
             }
         }
 
+		//创建新的block,包括首次创建list中的第一个block
         if (len) { /* First block to allocate, or need another block. */
             int numblocks;
 
             block = zmalloc(sizeof(*block));
             block->free = AOF_RW_BUF_BLOCK_SIZE;
             block->used = 0;
+			//添加到list的tail
             listAddNodeTail(server.aof_rewrite_buf_blocks,block);
 
             /* Log every time we cross more 10 or 100 blocks, respectively
              * as a notice or warning. */
+			//每增加10个就记录WARNING,每增加100个block就记录NOTICE
             numblocks = listLength(server.aof_rewrite_buf_blocks);
             if (((numblocks+1) % 10) == 0) {
                 int level = ((numblocks+1) % 100) == 0 ? LL_WARNING :
@@ -165,6 +174,8 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
 
     /* Install a file event to send data to the rewrite child if there is
      * not one already. */
+	//获取server.aof_pipe_write_data_to_child文件描述符上注册的event，如果没有注册，
+	//则在该文件描述符上添加写事件
     if (aeGetFileEvents(server.el,server.aof_pipe_write_data_to_child) == 0) {
         aeCreateFileEvent(server.el, server.aof_pipe_write_data_to_child,
             AE_WRITABLE, aofChildWriteDiffData, NULL);
@@ -1081,9 +1092,11 @@ int rewriteAppendOnlyFileRio(rio *aof) {
 
         /* SELECT the new DB */
         if (rioWrite(aof,selectcmd,sizeof(selectcmd)-1) == 0) goto werr;
+		//写入数据库NUM
         if (rioWriteBulkLongLong(aof,j) == 0) goto werr;
 
         /* Iterate this DB writing every entry */
+		//遍历当前数据库的entry
         while((de = dictNext(di)) != NULL) {
             sds keystr;
             robj key, *o;
@@ -1096,6 +1109,7 @@ int rewriteAppendOnlyFileRio(rio *aof) {
             expiretime = getExpire(db,&key);
 
             /* If this key is already expired skip it */
+			//当前key过期
             if (expiretime != -1 && expiretime < now) continue;
 
             /* Save the key and associated value */
@@ -1293,6 +1307,7 @@ int aofCreatePipes(void) {
     /* Parent -> children data is non blocking. */
     if (anetNonBlock(NULL,fds[0]) != ANET_OK) goto error;
     if (anetNonBlock(NULL,fds[1]) != ANET_OK) goto error;
+	//fd[2]读取child的signal
     if (aeCreateFileEvent(server.el, fds[2], AE_READABLE, aofChildPipeReadable, NULL) == AE_ERR) goto error;
 
     server.aof_pipe_write_data_to_child = fds[1];

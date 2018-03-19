@@ -493,16 +493,20 @@ void dictRelease(dict *d)
     zfree(d);
 }
 
+//ht中查找键为key值得entry 
 dictEntry *dictFind(dict *d, const void *key)
 {
     dictEntry *he;
     unsigned int h, idx, table;
-
+	//dict为空
     if (d->ht[0].used + d->ht[1].used == 0) return NULL; /* dict is empty */
-    if (dictIsRehashing(d)) _dictRehashStep(d);
+    //进行一次rehas
+	if (dictIsRehashing(d)) _dictRehashStep(d);
     h = dictHashKey(d, key);
     for (table = 0; table <= 1; table++) {
+		//获取buncet数组索引
         idx = h & d->ht[table].sizemask;
+		//链表首地址
         he = d->ht[table].table[idx];
         while(he) {
             if (key==he->key || dictCompareKeys(d, key, he->key))
