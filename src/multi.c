@@ -32,6 +32,7 @@
 /* ================================ MULTI/EXEC ============================== */
 
 /* Client state initialization for MULTI/EXEC */
+//初始化事务的状态
 void initClientMultiState(client *c) {
     c->mstate.commands = NULL;
     c->mstate.count = 0;
@@ -53,6 +54,7 @@ void freeClientMultiState(client *c) {
 }
 
 /* Add a new command into the MULTI commands queue */
+//将一个命令加入事物队列(数组)
 void queueMultiCommand(client *c) {
     multiCmd *mc;
     int j;
@@ -64,34 +66,43 @@ void queueMultiCommand(client *c) {
     mc->argc = c->argc;
     mc->argv = zmalloc(sizeof(robj*)*c->argc);
     memcpy(mc->argv,c->argv,sizeof(robj*)*c->argc);
+	//对应的robj引用计数+1
     for (j = 0; j < c->argc; j++)
         incrRefCount(mc->argv[j]);
     c->mstate.count++;
 }
 
+//discard事务状态
 void discardTransaction(client *c) {
+	//释放c指向的客户端的事物状态
     freeClientMultiState(c);
     initClientMultiState(c);
     c->flags &= ~(CLIENT_MULTI|CLIENT_DIRTY_CAS|CLIENT_DIRTY_EXEC);
+	//把该客户端关注的key从dict删除
     unwatchAllKeys(c);
 }
 
 /* Flag the transacation as DIRTY_EXEC so that EXEC will fail.
  * Should be called every time there is an error while queueing a command. */
+//判断事物的状态，避免递归调用MULTI命令
 void flagTransaction(client *c) {
     if (c->flags & CLIENT_MULTI)
         c->flags |= CLIENT_DIRTY_EXEC;
 }
 
+
+//标记客户端处于事务状态
 void multiCommand(client *c) {
     if (c->flags & CLIENT_MULTI) {
         addReplyError(c,"MULTI calls can not be nested");
         return;
     }
+	//表示客户端从非事物状态切换到事物状态
     c->flags |= CLIENT_MULTI;
     addReply(c,shared.ok);
 }
 
+//discard(移除)事物
 void discardCommand(client *c) {
     if (!(c->flags & CLIENT_MULTI)) {
         addReplyError(c,"DISCARD without MULTI");
@@ -111,6 +122,7 @@ void execCommandPropagateMulti(client *c) {
     decrRefCount(multistring);
 }
 
+//执行事务
 void execCommand(client *c) {
     int j;
     robj **orig_argv;
@@ -119,25 +131,28 @@ void execCommand(client *c) {
     int must_propagate = 0; /* Need to propagate MULTI/EXEC to AOF / slaves? */
     int was_master = server.masterhost == NULL;
 
+	//client在非事务状态
     if (!(c->flags & CLIENT_MULTI)) {
         addReplyError(c,"EXEC without MULTI");
         return;
     }
 
     /* Check if we need to abort the EXEC because:
-     * 1) Some WATCHed key was touched.
-     * 2) There was a previous error while queueing commands.
+     * 1) Some WATCHed key was touched(watched key 被修改).
+     * 2) There was a previous error while queueing commands(入队错误).
      * A failed EXEC in the first case returns a multi bulk nil object
      * (technically it is not an error but a special behavior), while
      * in the second an EXECABORT error is returned. */
     if (c->flags & (CLIENT_DIRTY_CAS|CLIENT_DIRTY_EXEC)) {
         addReply(c, c->flags & CLIENT_DIRTY_EXEC ? shared.execaborterr :
                                                   shared.nullmultibulk);
+		//拒绝执行这个事务
         discardTransaction(c);
         goto handle_monitor;
     }
 
     /* Exec all the queued commands */
+	//ASAP is As Soon As Possible
     unwatchAllKeys(c); /* Unwatch ASAP otherwise we'll waste CPU cycles */
     orig_argv = c->argv;
     orig_argc = c->argc;
@@ -158,6 +173,7 @@ void execCommand(client *c) {
             must_propagate = 1;
         }
 
+		//执行事务中的命令
         call(c,CMD_CALL_FULL);
 
         /* Commands may alter argc/argv, restore mstate. */
@@ -229,17 +245,20 @@ void watchForKey(client *c, robj *key) {
     }
     /* This key is not already watched in this DB. Let's add it */
     clients = dictFetchValue(c->db->watched_keys,key);
+	//在dict中创建该entry
     if (!clients) {
         clients = listCreate();
         dictAdd(c->db->watched_keys,key,clients);
         incrRefCount(key);
     }
+	//添加到value对应的链表的尾节点
     listAddNodeTail(clients,c);
     /* Add the new key to the list of keys watched by this client */
     wk = zmalloc(sizeof(*wk));
     wk->key = key;
     wk->db = c->db;
     incrRefCount(key);
+	//添加到客户端的链表中
     listAddNodeTail(c->watched_keys,wk);
 }
 
@@ -249,6 +268,7 @@ void unwatchAllKeys(client *c) {
     listIter li;
     listNode *ln;
 
+	//当前客户端watched_keys链表为空
     if (listLength(c->watched_keys) == 0) return;
     listRewind(c->watched_keys,&li);
     while((ln = listNext(&li))) {
@@ -258,13 +278,17 @@ void unwatchAllKeys(client *c) {
         /* Lookup the watched key -> clients list and remove the client
          * from the list */
         wk = listNodeValue(ln);
+		//dict中key对应的value为一个链表
         clients = dictFetchValue(wk->db->watched_keys, wk->key);
         serverAssertWithInfo(c,NULL,clients != NULL);
+		//删除watched_keys(dict)的value中的client节点
         listDelNode(clients,listSearchKey(clients,c));
         /* Kill the entry at all if this was the only client */
+		//如果该value为空（链表长度为0），则从dict删除该entry
         if (listLength(clients) == 0)
             dictDelete(wk->db->watched_keys, wk->key);
         /* Remove this watched key from the client->watched list */
+		//从客户端的链表中删除该key
         listDelNode(c->watched_keys,ln);
         decrRefCount(wk->key);
         zfree(wk);
@@ -273,6 +297,7 @@ void unwatchAllKeys(client *c) {
 
 /* "Touch" a key, so that if this key is being WATCHed by some client the
  * next EXEC will fail. */
+//标记所有WATCHed这个key的客户端为dirty
 void touchWatchedKey(redisDb *db, robj *key) {
     list *clients;
     listIter li;
@@ -322,6 +347,7 @@ void touchWatchedKeysOnFlush(int dbid) {
 void watchCommand(client *c) {
     int j;
 
+	//不能在MULTI（客户端处于事务状态）执行WATCH命令
     if (c->flags & CLIENT_MULTI) {
         addReplyError(c,"WATCH inside MULTI is not allowed");
         return;
