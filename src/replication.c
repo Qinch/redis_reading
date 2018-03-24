@@ -188,6 +188,7 @@ void feedReplicationBacklogWithObject(robj *o) {
  * the commands received by our clients in order to create the replication
  * stream. Instead if the instance is a slave and has sub-slaves attached,
  * we use replicationFeedSlavesFromMaster() */
+//向slave传播write commands，同时填充复制积压缓冲区
 void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
     listNode *ln;
     listIter li;
@@ -203,12 +204,14 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
 
     /* If there aren't slaves, and there is no backlog buffer to populate,
      * we can return ASAP. */
+	//ASAP means As Soon As Possibale
     if (server.repl_backlog == NULL && listLength(slaves) == 0) return;
 
     /* We can't have slaves attached and no backlog. */
     serverAssert(!(listLength(slaves) != 0 && server.repl_backlog == NULL));
 
     /* Send SELECT command to every slave if needed. */
+	//slaveeldb为最后一次复制SELECT命令指定的db
     if (server.slaveseldb != dictid) {
         robj *selectcmd;
 
@@ -226,10 +229,12 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
         }
 
         /* Add the SELECT command into the backlog. */
+		//添加SELECT命令到复制积压缓冲区
         if (server.repl_backlog) feedReplicationBacklogWithObject(selectcmd);
 
         /* Send it to slaves. */
         listRewind(slaves,&li);
+		//遍历每个slave，slave作为master的客户端
         while((ln = listNext(&li))) {
             client *slave = ln->value;
             if (slave->replstate == SLAVE_STATE_WAIT_BGSAVE_START) continue;
@@ -242,6 +247,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
     server.slaveseldb = dictid;
 
     /* Write the command to the replication backlog if any. */
+	//将command写入复制积压缓冲区
     if (server.repl_backlog) {
         char aux[LONG_STR_SIZE+3];
 
@@ -269,6 +275,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
     }
 
     /* Write the command to every slave. */
+	//发送给slave
     listRewind(slaves,&li);
     while((ln = listNext(&li))) {
         client *slave = ln->value;
@@ -293,6 +300,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
 /* This function is used in order to proxy what we receive from our master
  * to our sub-slaves. */
 #include <ctype.h>
+//该salve作为master的代理，将command发送给sub-slaves
 void replicationFeedSlavesFromMasterStream(list *slaves, char *buf, size_t buflen) {
     listNode *ln;
     listIter li;
