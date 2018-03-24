@@ -153,6 +153,7 @@ void execCommand(client *c) {
 
     /* Exec all the queued commands */
 	//ASAP is As Soon As Possible
+	//此时开始执行入队的命令，所以WATCHed key都清除
     unwatchAllKeys(c); /* Unwatch ASAP otherwise we'll waste CPU cycles */
     orig_argv = c->argv;
     orig_argc = c->argc;
@@ -264,6 +265,7 @@ void watchForKey(client *c, robj *key) {
 
 /* Unwatch all the keys watched by this client. To clean the EXEC dirty
  * flag is up to the caller. */
+//c的watched_keys链表的每个Node指向一个watchedKey
 void unwatchAllKeys(client *c) {
     listIter li;
     listNode *ln;
@@ -278,7 +280,7 @@ void unwatchAllKeys(client *c) {
         /* Lookup the watched key -> clients list and remove the client
          * from the list */
         wk = listNodeValue(ln);
-		//dict中key对应的value为一个链表
+		//dict中key对应的value为一个链表,链表的每个元素为c
         clients = dictFetchValue(wk->db->watched_keys, wk->key);
         serverAssertWithInfo(c,NULL,clients != NULL);
 		//删除watched_keys(dict)的value中的client节点
