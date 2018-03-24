@@ -49,7 +49,9 @@ int cancelReplicationHandshake(void);
  * pair. Mostly useful for logging, since we want to log a slave using its
  * IP address and its listening port which is more clear for the user, for
  * example: "Closing connection with slave 10.1.2.3:6380". */
+//获取slave的ip:port
 char *replicationGetSlaveName(client *c) {
+	//static局部变量
     static char buf[NET_PEER_ID_LEN];
     char ip[NET_IP_STR_LEN];
 
@@ -61,6 +63,7 @@ char *replicationGetSlaveName(client *c) {
         /* Note that the 'ip' buffer is always larger than 'c->slave_ip' */
         if (c->slave_ip[0] != '\0') memcpy(ip,c->slave_ip,sizeof(c->slave_ip));
 
+		//slave监听的端口
         if (c->slave_listening_port)
             anetFormatAddr(buf,sizeof(buf),ip,c->slave_listening_port);
         else
@@ -74,15 +77,20 @@ char *replicationGetSlaveName(client *c) {
 
 /* ---------------------------------- MASTER -------------------------------- */
 
+//创建复制积压缓冲区(replication backlog buff)
 void createReplicationBacklog(void) {
     serverAssert(server.repl_backlog == NULL);
     server.repl_backlog = zmalloc(server.repl_backlog_size);
+	//缓冲区中已有数据大小
     server.repl_backlog_histlen = 0;
+	//该缓冲区为环形队列，该变量指向下一个写入的首地址(即队尾)
     server.repl_backlog_idx = 0;
 
     /* We don't have any data inside our buffer, but virtually the first
      * byte we have is the next byte that will be generated for the
      * replication stream. */
+	//rep_backlog_off为复制偏移的首地址
+	//master_repl_offset为当前复制偏移量
     server.repl_backlog_off = server.master_repl_offset+1;
 }
 
@@ -92,9 +100,12 @@ void createReplicationBacklog(void) {
  * it contains the same data as the previous one (possibly less data, but
  * the most recent bytes, or the same data and more free space in case the
  * buffer is enlarged). */
+//先flush the old buffer，然后再调用该函数
+//修改复制积压缓冲区的大小
 void resizeReplicationBacklog(long long newsize) {
     if (newsize < CONFIG_REPL_BACKLOG_MIN_SIZE)
         newsize = CONFIG_REPL_BACKLOG_MIN_SIZE;
+	//newsize==oldsize直接返回
     if (server.repl_backlog_size == newsize) return;
 
     server.repl_backlog_size = newsize;
@@ -109,6 +120,7 @@ void resizeReplicationBacklog(long long newsize) {
         server.repl_backlog_histlen = 0;
         server.repl_backlog_idx = 0;
         /* Next byte we have is... the next since the buffer is empty. */
+		//复制偏移的首地址
         server.repl_backlog_off = server.master_repl_offset+1;
     }
 }
@@ -123,9 +135,11 @@ void freeReplicationBacklog(void) {
  * This function also increments the global replication offset stored at
  * server.master_repl_offset, because there is no case where we want to feed
  * the backlog without incrementing the offset. */
+//想复制积压缓冲区添加data，同时增加复制偏移量
 void feedReplicationBacklog(void *ptr, size_t len) {
     unsigned char *p = ptr;
 
+	//当前复制偏移量
     server.master_repl_offset += len;
 
     /* This is a circular buffer, so write as much data we can at every
@@ -135,15 +149,19 @@ void feedReplicationBacklog(void *ptr, size_t len) {
         if (thislen > len) thislen = len;
         memcpy(server.repl_backlog+server.repl_backlog_idx,p,thislen);
         server.repl_backlog_idx += thislen;
+		//环形队列
         if (server.repl_backlog_idx == server.repl_backlog_size)
             server.repl_backlog_idx = 0;
         len -= thislen;
         p += thislen;
+		//队列中数据的实际长度
         server.repl_backlog_histlen += thislen;
     }
+	//前边复制到环形队列中的数据存在覆盖
     if (server.repl_backlog_histlen > server.repl_backlog_size)
         server.repl_backlog_histlen = server.repl_backlog_size;
     /* Set the offset of the first byte we have in the backlog. */
+	//在复积压缓冲区中的，复制便宜首地址
     server.repl_backlog_off = server.master_repl_offset -
                               server.repl_backlog_histlen + 1;
 }
