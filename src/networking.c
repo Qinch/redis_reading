@@ -75,6 +75,7 @@ client *createClient(int fd) {
      * in the context of a client. When commands are executed in other
      * contexts (for instance a Lua script) we need a non connected client. */
     if (fd != -1) {
+		//设置为非阻塞模式
         anetNonBlock(NULL,fd);
         anetEnableTcpNoDelay(NULL,fd);
         if (server.tcpkeepalive)
@@ -604,6 +605,7 @@ int clientHasPendingReplies(client *c) {
 #define MAX_ACCEPTS_PER_CALL 1000
 static void acceptCommonHandler(int fd, int flags, char *ip) {
     client *c;
+	//创建客户端
     if ((c = createClient(fd)) == NULL) {
         serverLog(LL_WARNING,
             "Error registering fd event for the new client: %s (fd=%d)",
@@ -680,6 +682,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     UNUSED(privdata);
 
     while(max--) {
+		//accept封装
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
