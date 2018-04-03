@@ -67,6 +67,8 @@ int listMatchObjects(void *a, void *b) {
     return equalStringObjects(a,b);
 }
 
+
+//创建客户端结构体
 client *createClient(int fd) {
     client *c = zmalloc(sizeof(client));
 
@@ -80,6 +82,7 @@ client *createClient(int fd) {
         anetEnableTcpNoDelay(NULL,fd);
         if (server.tcpkeepalive)
             anetKeepAlive(NULL,fd,server.tcpkeepalive);
+		//读取客户端发送的消息
         if (aeCreateFileEvent(server.el,fd,AE_READABLE,
             readQueryFromClient, c) == AE_ERR)
         {
@@ -1374,7 +1377,9 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         if (remaining < readlen) readlen = remaining;
     }
 
+	//qlen表示当前buf中的数据量
     qblen = sdslen(c->querybuf);
+	//peak of querybuff size
     if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
     c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
     nread = read(fd, c->querybuf+qblen, readlen);
@@ -1383,10 +1388,12 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             return;
         } else {
             serverLog(LL_VERBOSE, "Reading from client: %s",strerror(errno));
+			//释放客户端
             freeClient(c);
             return;
         }
     } else if (nread == 0) {
+		//nread = 0 表示对端断开连接
         serverLog(LL_VERBOSE, "Client closed connection");
         freeClient(c);
         return;

@@ -1707,9 +1707,11 @@ int listenToPort(int port, int *fds, int *count) {
             int unsupported = 0;
             /* Bind * for both IPv6 and IPv4, we enter here only if
              * server.bindaddr_count == 0. */
+			//fd[*count]为listen的fd
             fds[*count] = anetTcp6Server(server.neterr,port,NULL,
                 server.tcp_backlog);
             if (fds[*count] != ANET_ERR) {
+				//设置为非阻塞模式
                 anetNonBlock(NULL,fds[*count]);
                 (*count)++;
             } else if (errno == EAFNOSUPPORT) {
@@ -1793,6 +1795,7 @@ void initServer(void) {
     int j;
 
     signal(SIGHUP, SIG_IGN);
+	//如果关闭写，然后write会差生SIGPIPE信号
     signal(SIGPIPE, SIG_IGN);
     setupSignalHandlers();
 
@@ -1801,6 +1804,7 @@ void initServer(void) {
             server.syslog_facility);
     }
 
+	//获取进程Id
     server.pid = getpid();
     server.current_client = NULL;
     server.clients = listCreate();
@@ -1825,6 +1829,7 @@ void initServer(void) {
             strerror(errno));
         exit(1);
     }
+	//创建dbnum个dict,即dbnum个数据库
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
     /* Open the TCP listening socket for the user commands. */
@@ -1841,6 +1846,7 @@ void initServer(void) {
             serverLog(LL_WARNING, "Opening Unix socket: %s", server.neterr);
             exit(1);
         }
+		//设置成非阻塞
         anetNonBlock(NULL,server.sofd);
     }
 
@@ -1903,6 +1909,7 @@ void initServer(void) {
 
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
+	//fd事件
     for (j = 0; j < server.ipfd_count; j++) {
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)

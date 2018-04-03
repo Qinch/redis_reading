@@ -2116,4 +2116,4 @@ rdbSaveInfo *rdbPopulateSaveInfo(rdbSaveInfo *rsi) {
         return rsi;
     }
     return NULL;
-
+}

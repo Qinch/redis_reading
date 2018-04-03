@@ -112,6 +112,7 @@ typedef struct aeEventLoop {
     aeTimeEvent *timeEventHead;
     int stop;
     void *apidata; /* This is used for polling API specific data */
+	//执行select/epoll之前（sleep之前）执行的函数
     aeBeforeSleepProc *beforesleep;
     aeBeforeSleepProc *aftersleep;
 } aeEventLoop;

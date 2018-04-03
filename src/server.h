@@ -448,7 +448,7 @@ typedef long long mstime_t; /* millisecond time type. */
 /* The actual Redis Object */
 #define OBJ_STRING 0
 #define OBJ_LIST 1
-#define cOBJ_SET 2
+#define OBJ_SET 2
 #define OBJ_ZSET 3
 #define OBJ_HASH 4
 
@@ -588,7 +588,7 @@ typedef struct redisObject {
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits decreas time). */
     int refcount;
-\   void *ptr;
+   void *ptr;
 } robj;
 
 /* Macro used to initialize a Redis object allocated on the stack.

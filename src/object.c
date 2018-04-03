@@ -548,7 +548,7 @@ int collateStringObjects(robj *a, robj *b) {
     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_COLL);
 }
 
- * because it can perform some more optimization. */
+ /* because it can perform some more optimization. */
 int equalStringObjects(robj *a, robj *b) {
     if (a->encoding == OBJ_ENCODING_INT &&
         b->encoding == OBJ_ENCODING_INT){
@@ -664,11 +664,6 @@ int getLongLongFromObject(robj *o, long long *target) {
         if (sdsEncodedObject(o)) {
             if (string2ll(o->ptr,sdslen(o->ptr),&value) == 0) return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
-            value = (long)o->ptr;
-        } else {
-            serverPanic("Unknown string encoding");
-        }
-    }
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");
