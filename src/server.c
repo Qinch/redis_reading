@@ -1857,12 +1857,17 @@ void initServer(void) {
     }
 
     /* Create the Redis databases, and initialize other internal state. */
+	//创建数据库
     for (j = 0; j < server.dbnum; j++) {
+		//数据库
         server.db[j].dict = dictCreate(&dbDictType,NULL);
+		//过期dict
         server.db[j].expires = dictCreate(&keyptrDictType,NULL);
         server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
         server.db[j].ready_keys = dictCreate(&objectKeyPointerValueDictType,NULL);
+		//WATCHed keys
         server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);
+		//db ID
         server.db[j].id = j;
         server.db[j].avg_ttl = 0;
     }
@@ -1902,6 +1907,7 @@ void initServer(void) {
     /* Create the timer callback, this is our way to process many background
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
+	//创建定时器
     if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create event loop timers.");
         exit(1);
@@ -1910,6 +1916,7 @@ void initServer(void) {
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
 	//fd事件
+	//在事件处理器上注册handler, 处理listen fd上的可读事件(表示有新的连接到来)
     for (j = 0; j < server.ipfd_count; j++) {
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)
@@ -1918,6 +1925,7 @@ void initServer(void) {
                     "Unrecoverable error creating server.ipfd file event.");
             }
     }
+	//unix域socket
     if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) serverPanic("Unrecoverable error creating server.sofd file event.");
 

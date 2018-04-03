@@ -230,8 +230,10 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
     te->finalizerProc = finalizerProc;
     te->clientData = clientData;
 	//添加te节点到链表
+	//添加到链表首节点
     te->next = eventLoop->timeEventHead;
     eventLoop->timeEventHead = te;
+	//返回时间事件ID
     return id;
 }
 
