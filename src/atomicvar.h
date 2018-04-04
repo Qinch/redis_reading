@@ -106,6 +106,8 @@
     var += (count); \
     pthread_mutex_unlock(&var ## _mutex); \
 } while(0)
+
+//原子性incre操作
 #define atomicGetIncr(var,oldvalue_var,count) do { \
     pthread_mutex_lock(&var ## _mutex); \
     oldvalue_var = var; \

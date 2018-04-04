@@ -1918,6 +1918,8 @@ void initServer(void) {
 	//fd事件
 	//在事件处理器上注册handler, 处理listen fd上的可读事件(表示有新的连接到来)
     for (j = 0; j < server.ipfd_count; j++) {
+		//在每个listfd上创建event
+		//aeCreateFileEvent means epoll_ctl
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)
             {

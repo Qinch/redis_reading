@@ -696,7 +696,9 @@ typedef struct client {
 	//指向命令所对应的redisCommand结构
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
+	//待从缓冲区读取的参数(bulk)数量
     int multibulklen;       /* Number of multi bulk arguments left to read. */
+	//当前参数(bulk)的长度
     long bulklen;           /* Length of bulk argument in multi bulk request. */
 	//输出缓冲区：可变大小
     list *reply;            /* List of reply objects to send to the client. */
@@ -1086,6 +1088,7 @@ struct redisServer {
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
+	//复制积压缓冲区，用于部分同步
     char *repl_backlog;             /* Replication backlog for partial syncs */
     long long repl_backlog_size;    /* Backlog circular buffer size */
     long long repl_backlog_histlen; /* Backlog actual data length */
@@ -1093,6 +1096,7 @@ struct redisServer {
                                        that is the next byte will'll write to.*/
     long long repl_backlog_off;     /* Replication "master offset" of first
                                        byte in the replication backlog buffer.*/
+    time_t repl_backlog_time_limit; /* Time without slaves after the backlog
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
                                        gets released. */
     time_t repl_no_slaves_since;    /* We have no slaves since that time.
@@ -1963,11 +1967,11 @@ void zunionstoreCommand(client *c);
 void zinterstoreCommand(client *c);
 void zscanCommand(client *c);
 void hkeysCommand(client *c);
+void configCommand(client *c);
 void hvalsCommand(client *c);
 void hgetallCommand(client *c);
 void hexistsCommand(client *c);
 void hscanCommand(client *c);
-void configCommand(client *c);
 void hincrbyCommand(client *c);
 void hincrbyfloatCommand(client *c);
 void subscribeCommand(client *c);

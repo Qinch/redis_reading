@@ -142,6 +142,7 @@ void aeStop(aeEventLoop *eventLoop) {
 int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         aeFileProc *proc, void *clientData)
 {
+	//setsize为eventLoop->evetns[]结构体的最大下标
     if (fd >= eventLoop->setsize) {
         errno = ERANGE;
         return AE_ERR;
@@ -151,7 +152,9 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
     if (aeApiAddEvent(eventLoop, fd, mask) == -1)
         return AE_ERR;
     fe->mask |= mask;
+	//read函数指针
     if (mask & AE_READABLE) fe->rfileProc = proc;
+	//write函数指针
     if (mask & AE_WRITABLE) fe->wfileProc = proc;
     fe->clientData = clientData;
 	//当前注册的最大fd（文件描述符，为一个整数）
