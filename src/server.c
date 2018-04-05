@@ -1182,6 +1182,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 /* This function gets called every time Redis is entering the
  * main loop of the event driven library, that is, before to sleep
  * for ready file descriptors. */
+//每次进入epoll_wait或者select等sleep函数之前执行的
 void beforeSleep(struct aeEventLoop *eventLoop) {
     UNUSED(eventLoop);
 
@@ -1228,6 +1229,8 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     flushAppendOnlyFile(0);
 
     /* Handle writes with pending output buffers. */
+	//处理各个client的输出缓冲区中的数据
+	//如果write返回-1，并且输出缓冲区中还有数据，则注册写事件
     handleClientsWithPendingWrites();
 
     /* Before we are going to sleep, let the threads access the dataset by
@@ -2326,12 +2329,14 @@ void call(client *c, int flags) {
  * If C_OK is returned the client is still alive and valid and
  * other operations can be performed by the caller. Otherwise
  * if C_ERR is returned the client was destroyed (i.e. after QUIT). */
+//当从querybuff中解析出一个完整cmd之后，就调用该函数执行该cmd
 int processCommand(client *c) {
     /* The QUIT command is handled separately. Normal command procs will
      * go through checking for replication and QUIT will cause trouble
      * when FORCE_REPLICATION is enabled and would be implemented in
      * a regular command proc. */
     if (!strcasecmp(c->argv[0]->ptr,"quit")) {
+		//将返回值放入输出缓冲区
         addReply(c,shared.ok);
         c->flags |= CLIENT_CLOSE_AFTER_REPLY;
         return C_ERR;
@@ -2339,14 +2344,17 @@ int processCommand(client *c) {
 
     /* Now lookup the command and check ASAP about trivial error conditions
      * such as wrong arity, bad command name and so forth. */
+	//从cmd dict查找ptr cmd
     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
     if (!c->cmd) {
+		//如果处于事务状态，错误的命令入队，则标记为dirty exec
         flagTransaction(c);
         addReplyErrorFormat(c,"unknown command '%s'",
             (char*)c->argv[0]->ptr);
         return C_OK;
     } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
                (c->argc < -c->cmd->arity)) {
+		//如果命令参数个数不对
         flagTransaction(c);
         addReplyErrorFormat(c,"wrong number of arguments for '%s' command",
             c->cmd->name);
@@ -2504,6 +2512,7 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
+		//执行命令
         call(c,CMD_CALL_FULL);
         c->woff = server.master_repl_offset;
         if (listLength(server.ready_keys))
@@ -3884,7 +3893,9 @@ int main(int argc, char **argv) {
 
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeSetAfterSleepProc(server.el,afterSleep);
+	//进入event loop
     aeMain(server.el);
+	//删除event loop
     aeDeleteEventLoop(server.el);
     return 0;
 }

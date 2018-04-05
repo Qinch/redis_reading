@@ -160,10 +160,12 @@ client *createClient(int fd) {
 /* This function is called every time we are going to transmit new data
  * to the client. The behavior is the following:
  *
+ * 是一个真正的客户端
  * If the client should receive new data (normal clients will) the function
  * returns C_OK, and make sure to install the write handler in our event
  * loop so that when the socket is writable new data gets written.
  *
+ * 如果是一个伪客户端
  * If the client should not receive new data, because it is a fake client
  * (used to load AOF in memory), a master or because the setup of the write
  * handler failed, the function returns C_ERR.
@@ -192,6 +194,7 @@ int prepareClientToWrite(client *c) {
     if ((c->flags & CLIENT_MASTER) &&
         !(c->flags & CLIENT_MASTER_FORCE_REPLY)) return C_ERR;
 
+	//fd >=0表示伪客户端
     if (c->fd <= 0) return C_ERR; /* Fake client for AOF loading. */
 
     /* Schedule the client to write the output buffers to the socket only
@@ -214,6 +217,7 @@ int prepareClientToWrite(client *c) {
     }
 
     /* Authorize the caller to queue in the output buffer of this client. */
+	//允许将返回值加入输出缓冲区
     return C_OK;
 }
 
@@ -221,31 +225,40 @@ int prepareClientToWrite(client *c) {
  * Low level functions to add more data to output buffers.
  * -------------------------------------------------------------------------- */
 
+//添加s到output buffer
 int _addReplyToBuffer(client *c, const char *s, size_t len) {
+	//buf中可用空间大小
     size_t available = sizeof(c->buf)-c->bufpos;
 
     if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return C_OK;
 
     /* If there already are entries in the reply list, we cannot
      * add anything more to the static buffer. */
+	//如果reply list有数据，则不能添加到buf输出缓冲区
     if (listLength(c->reply) > 0) return C_ERR;
 
     /* Check that the buffer has enough space available for this string. */
     if (len > available) return C_ERR;
 
+	//将s追加到buf缓冲区
     memcpy(c->buf+c->bufpos,s,len);
     c->bufpos+=len;
     return C_OK;
 }
 
+//添加输出数据到reply list中
 void _addReplyObjectToList(client *c, robj *o) {
     if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return;
 
+	//第一个node
     if (listLength(c->reply) == 0) {
         sds s = sdsdup(o->ptr);
         listAddNodeTail(c->reply,s);
         c->reply_bytes += sdslen(s);
     } else {
+		//非第一个node
+		
+		//尾节点
         listNode *ln = listLast(c->reply);
         sds tail = listNodeValue(ln);
 
@@ -256,6 +269,7 @@ void _addReplyObjectToList(client *c, robj *o) {
             listNodeValue(ln) = tail;
             c->reply_bytes += sdslen(o->ptr);
         } else {
+			//创建一个新的node
             sds s = sdsdup(o->ptr);
             listAddNodeTail(c->reply,s);
             c->reply_bytes += sdslen(s);
@@ -326,6 +340,7 @@ void _addReplyStringToList(client *c, const char *s, size_t len) {
  * -------------------------------------------------------------------------- */
 
 void addReply(client *c, robj *obj) {
+	//判断是否有pending buffer，如果没有，则给该c添加flag标记
     if (prepareClientToWrite(c) != C_OK) return;
 
     /* This is an important place where we can avoid copy-on-write
@@ -336,7 +351,9 @@ void addReply(client *c, robj *obj) {
      * we'll be able to send the object to the client without
      * messing with its page. */
     if (sdsEncodedObject(obj)) {
+		//如果buff中没有足够的空间或者reply list中有数据，则直接将输出追加到reply list中
         if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != C_OK)
+			//追加输出数据到reply list
             _addReplyObjectToList(c,obj);
     } else if (obj->encoding == OBJ_ENCODING_INT) {
         /* Optimization: if there is room in the static buffer for 32 bytes
@@ -614,6 +631,7 @@ void copyClientOutputBuffer(client *dst, client *src) {
 
 /* Return true if the specified client has pending reply buffers to write to
  * the socket. */
+//如果输出缓冲区中有数据，则返回true
 int clientHasPendingReplies(client *c) {
     return c->bufpos || listLength(c->reply);
 }
@@ -711,7 +729,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
             return;
         }
         serverLog(LL_VERBOSE,"Accepted %s:%d", cip, cport);
-		//给accept fd穿件client结构体
+		//给accept fd创建client结构体
 		//
         acceptCommonHandler(cfd,0,cip);
     }
@@ -919,8 +937,11 @@ int writeToClient(int fd, client *c, int handler_installed) {
     size_t objlen;
     sds o;
 
+	//如果c的输出缓冲区中有数据
+	//循环写，知道write返回-1
     while(clientHasPendingReplies(c)) {
         if (c->bufpos > 0) {
+			//如果buf缓冲区中还有数据
             nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
             if (nwritten <= 0) break;
             c->sentlen += nwritten;
@@ -928,19 +949,23 @@ int writeToClient(int fd, client *c, int handler_installed) {
 
             /* If the buffer was sent, set bufpos to zero to continue with
              * the remainder of the reply. */
+			//如果buf缓冲区的数据都发送完毕，则接下来处理reply list中的缓冲区
             if ((int)c->sentlen == c->bufpos) {
                 c->bufpos = 0;
                 c->sentlen = 0;
             }
         } else {
+			//buf中的数据已经输出完了，现在处理reply list中的数据
             o = listNodeValue(listFirst(c->reply));
             objlen = sdslen(o);
 
+			//如果该节点中的数据长度为0,直接删除该节点
             if (objlen == 0) {
                 listDelNode(c->reply,listFirst(c->reply));
                 continue;
             }
 
+			//sendlen表示buf缓冲区中已经发送的数据数量，或者reply list中单个节点的已经发送的数据数量
             nwritten = write(fd, o + c->sentlen, objlen - c->sentlen);
             if (nwritten <= 0) break;
             c->sentlen += nwritten;
@@ -948,8 +973,10 @@ int writeToClient(int fd, client *c, int handler_installed) {
 
             /* If we fully sent the object on head go to the next one */
             if (c->sentlen == objlen) {
+				//从reply 中删除该node
                 listDelNode(c->reply,listFirst(c->reply));
                 c->sentlen = 0;
+				//更新reply中totoal reply bytes
                 c->reply_bytes -= objlen;
                 /* If there are no longer objects in the list, we expect
                  * the count of reply bytes to be exactly zero. */
@@ -969,9 +996,11 @@ int writeToClient(int fd, client *c, int handler_installed) {
             (server.maxmemory == 0 ||
              zmalloc_used_memory() < server.maxmemory)) break;
     }
+	//写入到fd的数据量
     server.stat_net_output_bytes += totwritten;
     if (nwritten == -1) {
         if (errno == EAGAIN) {
+			//被中断
             nwritten = 0;
         } else {
             serverLog(LL_VERBOSE,
@@ -985,10 +1014,13 @@ int writeToClient(int fd, client *c, int handler_installed) {
          * as an interaction, since we always send REPLCONF ACK commands
          * that take some time to just fill the socket output buffer.
          * We just rely on data / pings received for timeout detection. */
+		//更新与客户端交互时间
         if (!(c->flags & CLIENT_MASTER)) c->lastinteraction = server.unixtime;
     }
+	//如果c没有pending replies
     if (!clientHasPendingReplies(c)) {
         c->sentlen = 0;
+		//卸载在该fd上的写事件
         if (handler_installed) aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
 
         /* Close connection after entire reply has been sent. */
@@ -1014,9 +1046,11 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 int handleClientsWithPendingWrites(void) {
     listIter li;
     listNode *ln;
+	//返回需要处理output buffer的客户端的数量
     int processed = listLength(server.clients_pending_write);
 
     listRewind(server.clients_pending_write,&li);
+	//遍历链表中每个节点
     while((ln = listNext(&li))) {
         client *c = listNodeValue(ln);
         c->flags &= ~CLIENT_PENDING_WRITE;
@@ -1027,6 +1061,8 @@ int handleClientsWithPendingWrites(void) {
 
         /* If there is nothing left, do nothing. Otherwise install
          * the write handler. */
+		//如果该客户端输出缓冲区仍然输出数据，则注册写事件
+		//注册sendReplyToClient回调函数
         if (clientHasPendingReplies(c) &&
             aeCreateFileEvent(server.el, c->fd, AE_WRITABLE,
                 sendReplyToClient, c) == AE_ERR)
@@ -1177,7 +1213,8 @@ int processMultibulkBuffer(client *c) {
     int pos = 0, ok;
     long long ll;
 
-	//multibulklen=0表示现在buffer中是一个完整的命令
+	//multibulklen=0表示现在buffer中是一个新的命令
+	//此时，首先获取*num中的num字段
     if (c->multibulklen == 0) {
         /* The client should have been reset */
         serverAssertWithInfo(c,NULL,c->argc == 0);
@@ -1228,8 +1265,12 @@ int processMultibulkBuffer(client *c) {
     }
 
     serverAssertWithInfo(c,NULL,c->multibulklen > 0);
+	
+	//mutibulklen表示命令中参数的个数，
+	//根据此变量才从buffer中解析每个参数(bulk)
     while(c->multibulklen) {
         /* Read bulk length if unknown */
+		//如果bulklen为-1，表示开始一个新的bulk读取
         if (c->bulklen == -1) {
             newline = strchr(c->querybuf+pos,'\r');
             if (newline == NULL) {
@@ -1279,6 +1320,7 @@ int processMultibulkBuffer(client *c) {
                 if (qblen < (size_t)ll+2)
                     c->querybuf = sdsMakeRoomFor(c->querybuf,ll+2-qblen);
             }
+			//当前参数（bulk）的长度
             c->bulklen = ll;
         }
 
@@ -1290,6 +1332,7 @@ int processMultibulkBuffer(client *c) {
             /* Optimization: if the buffer contains JUST our bulk element
              * instead of creating a new object by *copying* the sds we
              * just use the current sds string. */
+			//如果buffer中仅含有一个参数(bulk)
             if (pos == 0 &&
                 c->bulklen >= PROTO_MBULK_BIG_ARG &&
                 (signed) sdslen(c->querybuf) == c->bulklen+2)
@@ -1298,14 +1341,17 @@ int processMultibulkBuffer(client *c) {
                 sdsIncrLen(c->querybuf,-2); /* remove CRLF */
                 /* Assume that if we saw a fat argument we'll see another one
                  * likely... */
+				//重新创建一个querybuf
                 c->querybuf = sdsnewlen(NULL,c->bulklen+2);
                 sdsclear(c->querybuf);
                 pos = 0;
             } else {
+				//创建String robj
                 c->argv[c->argc++] =
                     createStringObject(c->querybuf+pos,c->bulklen);
                 pos += c->bulklen+2;
             }
+			//表示读取了一个完整的bulk（参数）
             c->bulklen = -1;
 			//待读取的bulk（参数）数量
             c->multibulklen--;
@@ -1409,8 +1455,9 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
      * at the risk of requiring more read(2) calls. This way the function
      * processMultiBulkBuffer() can avoid copying buffers to create the
      * Redis Object representing the argument. */
-	//multibulklen表示待从缓冲区读取的数据的长度
-	//bulklen表示客户端请求参数的长度
+	//multibulklen表示待从读取的参数的个数
+	//bulklen表示当前参数的长度
+	//客户端为redis-cli
     if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
         && c->bulklen >= PROTO_MBULK_BIG_ARG)
     {
@@ -1442,8 +1489,6 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             freeClient(c);
             return;
         }
-    } else if (nread == 0) {
-		//nread = 0 表示对端断开连接
         serverLog(LL_VERBOSE, "Client closed connection");
         freeClient(c);
         return;
