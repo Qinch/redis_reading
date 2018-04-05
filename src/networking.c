@@ -1458,6 +1458,8 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 	//multibulklen表示待从读取的参数的个数
 	//bulklen表示当前参数的长度
 	//客户端为redis-cli
+	
+	//如果还有待读取的参数,并且上一次最后一个参数不完整
     if (c->reqtype == PROTO_REQ_MULTIBULK && c->multibulklen && c->bulklen != -1
         && c->bulklen >= PROTO_MBULK_BIG_ARG)
     {
