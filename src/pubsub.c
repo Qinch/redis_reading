@@ -48,6 +48,7 @@ int listMatchPubsubPattern(void *a, void *b) {
 }
 
 /* Return the number of channels + patterns a client is subscribed to. */
+//返回该client订阅的channel和patterns数量
 int clientSubscriptionsCount(client *c) {
     return dictSize(c->pubsub_channels)+
            listLength(c->pubsub_patterns);
@@ -61,16 +62,24 @@ int pubsubSubscribeChannel(client *c, robj *channel) {
     int retval = 0;
 
     /* Add the channel to the client -> channels hash table */
+	//将订阅的channel添加到client结构体的pubsub_channels字典
+	//key为channel
     if (dictAdd(c->pubsub_channels,channel,NULL) == DICT_OK) {
         retval = 1;
         incrRefCount(channel);
         /* Add the client to the channel -> list of clients hash table */
+		//将channel添加到server的pubsub_channels字典
+		//首先在dict中查找是否该channel存在，如果存在，将c添加到entry的value链表中
+		//如果不存在，在字典中添加entry,该entry的key为robj，value为client的链表
         de = dictFind(server.pubsub_channels,channel);
         if (de == NULL) {
+			//den=NULL表示该channel在dict不存在
             clients = listCreate();
             dictAdd(server.pubsub_channels,channel,clients);
+			//robj引用+1
             incrRefCount(channel);
         } else {
+			//该channel在dict中已经存在
             clients = dictGetVal(de);
         }
         listAddNodeTail(clients,c);
@@ -85,6 +94,7 @@ int pubsubSubscribeChannel(client *c, robj *channel) {
 
 /* Unsubscribe a client from a channel. Returns 1 if the operation succeeded, or
  * 0 if the client was not subscribed to the specified channel. */
+//取消channel的订阅
 int pubsubUnsubscribeChannel(client *c, robj *channel, int notify) {
     dictEntry *de;
     list *clients;
@@ -92,17 +102,22 @@ int pubsubUnsubscribeChannel(client *c, robj *channel, int notify) {
     int retval = 0;
 
     /* Remove the channel from the client -> channels hash table */
+	//先将该channel的robj引用加1，因为如果从dict中删除该channle,如果此时robj引用计数为0，将free该对象，
+	//导致notify客户端时引用的channel为空。
     incrRefCount(channel); /* channel may be just a pointer to the same object
                             we have in the hash tables. Protect it... */
+	//从客户端的dict中删除该channel
     if (dictDelete(c->pubsub_channels,channel) == DICT_OK) {
         retval = 1;
         /* Remove the client from the channel -> clients list hash table */
+		//从server的dict中找到key为channel的entry，获取其value，从value的链表中删除该client
         de = dictFind(server.pubsub_channels,channel);
         serverAssertWithInfo(c,NULL,de != NULL);
         clients = dictGetVal(de);
         ln = listSearchKey(clients,c);
         serverAssertWithInfo(c,NULL,ln != NULL);
         listDelNode(clients,ln);
+		//如果链表长度变为0，则从字典中删除key为channel的entry
         if (listLength(clients) == 0) {
             /* Free the list and associated hash entry at all if this was
              * the latest client, so that it will be possible to abuse
@@ -124,14 +139,20 @@ int pubsubUnsubscribeChannel(client *c, robj *channel, int notify) {
 }
 
 /* Subscribe a client to a pattern. Returns 1 if the operation succeeded, or 0 if the client was already subscribed to that pattern. */
+//订阅一个pattern
 int pubsubSubscribePattern(client *c, robj *pattern) {
     int retval = 0;
 
+	//首先查找链表中是否存在该pattern
     if (listSearchKey(c->pubsub_patterns,pattern) == NULL) {
         retval = 1;
         pubsubPattern *pat;
+		//如果不存在，则添加到client的pubsub_patterns链表结尾
         listAddNodeTail(c->pubsub_patterns,pattern);
+		//增加引用计数
         incrRefCount(pattern);
+
+		//将该pattern添加到server的pubsub_patterns链表 
         pat = zmalloc(sizeof(*pat));
         pat->pattern = getDecodedObject(pattern);
         pat->client = c;
@@ -229,16 +250,19 @@ int pubsubPublishMessage(robj *channel, robj *message) {
     listIter li;
 
     /* Send to clients listening for that channel */
-    de = dictFind(server.pubsub_channels,channel);
+    //在pubsub_channels字典中找到key为channel的entry
+	de = dictFind(server.pubsub_channels,channel);
     if (de) {
+		//获取entry中value表示的客户端链表
         list *list = dictGetVal(de);
         listNode *ln;
         listIter li;
 
         listRewind(list,&li);
+		//遍历客户端链表中每个node	
         while ((ln = listNext(&li)) != NULL) {
             client *c = ln->value;
-
+			
             addReply(c,shared.mbulkhdr[3]);
             addReply(c,shared.messagebulk);
             addReplyBulk(c,channel);
@@ -246,6 +270,8 @@ int pubsubPublishMessage(robj *channel, robj *message) {
             receivers++;
         }
     }
+
+	//patterns
     /* Send to clients listening to matching channels */
     if (listLength(server.pubsub_patterns)) {
         listRewind(server.pubsub_patterns,&li);
@@ -253,6 +279,7 @@ int pubsubPublishMessage(robj *channel, robj *message) {
         while ((ln = listNext(&li)) != NULL) {
             pubsubPattern *pat = ln->value;
 
+			//如果该channel与pattern匹配，则发送给对应的client
             if (stringmatchlen((char*)pat->pattern->ptr,
                                 sdslen(pat->pattern->ptr),
                                 (char*)channel->ptr,
