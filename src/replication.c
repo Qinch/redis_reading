@@ -49,7 +49,8 @@ int cancelReplicationHandshake(void);
  * pair. Mostly useful for logging, since we want to log a slave using its
  * IP address and its listening port which is more clear for the user, for
  * example: "Closing connection with slave 10.1.2.3:6380". */
-//获取slave的ip:port
+//获取slave的ip:port pair
+//不可重入函数
 char *replicationGetSlaveName(client *c) {
 	//static局部变量
     static char buf[NET_PEER_ID_LEN];
@@ -67,7 +68,7 @@ char *replicationGetSlaveName(client *c) {
         if (c->slave_listening_port)
             anetFormatAddr(buf,sizeof(buf),ip,c->slave_listening_port);
         else
-            snprintf(buf,sizeof(buf),"%s:<unknown-slave-port>",ip);
+            snprintf(buf,sizeof(buf),"%s:<unknown-slave-port>",ip);//port为unkown
     } else {
         snprintf(buf,sizeof(buf),"client id #%llu",
             (unsigned long long) c->id);
@@ -89,7 +90,7 @@ void createReplicationBacklog(void) {
     /* We don't have any data inside our buffer, but virtually the first
      * byte we have is the next byte that will be generated for the
      * replication stream. */
-	//rep_backlog_off为复制偏移的首地址
+	//rep_backlog_off为复制偏移首地址
 	//master_repl_offset为当前复制偏移量
     server.repl_backlog_off = server.master_repl_offset+1;
 }
@@ -100,9 +101,25 @@ void createReplicationBacklog(void) {
  * it contains the same data as the previous one (possibly less data, but
  * the most recent bytes, or the same data and more free space in case the
  * buffer is enlarged). */
+/*  an example for repl_backlog
+ * 
+ *    repl_backlog
+ *      |             repl_backlog_idx  
+ *      |                     |
+ *      |---------------------|--------------
+ *      |---------------------|-------------
+ *      |         data        |
+ *      |                   master_repl_offset
+ *  repl_backlog_off          
+ * 
+ * 
+ * 
+ * 
+ */
 //先flush the old buffer，然后再调用该函数
 //修改复制积压缓冲区的大小
 void resizeReplicationBacklog(long long newsize) {
+	//复制积压缓冲区最小为16k
     if (newsize < CONFIG_REPL_BACKLOG_MIN_SIZE)
         newsize = CONFIG_REPL_BACKLOG_MIN_SIZE;
 	//newsize==oldsize直接返回
@@ -120,7 +137,7 @@ void resizeReplicationBacklog(long long newsize) {
         server.repl_backlog_histlen = 0;
         server.repl_backlog_idx = 0;
         /* Next byte we have is... the next since the buffer is empty. */
-		//复制偏移的首地址
+		//复制偏移量首地址
         server.repl_backlog_off = server.master_repl_offset+1;
     }
 }
@@ -135,21 +152,24 @@ void freeReplicationBacklog(void) {
  * This function also increments the global replication offset stored at
  * server.master_repl_offset, because there is no case where we want to feed
  * the backlog without incrementing the offset. */
-//想复制积压缓冲区添加data，同时增加复制偏移量
+//向复制积压缓冲区添加data，同时增加复制偏移量
 void feedReplicationBacklog(void *ptr, size_t len) {
     unsigned char *p = ptr;
 
-	//当前复制偏移量
+	//master的当前复制偏移量
+	//对应于复制积压缓冲区的repl_backlog_idx
     server.master_repl_offset += len;
 
     /* This is a circular buffer, so write as much data we can at every
      * iteration and rewind the "idx" index if we reach the limit. */
     while(len) {
+		//复制积压缓冲区中的空闲区域
         size_t thislen = server.repl_backlog_size - server.repl_backlog_idx;
         if (thislen > len) thislen = len;
         memcpy(server.repl_backlog+server.repl_backlog_idx,p,thislen);
+		//更新偏移量
         server.repl_backlog_idx += thislen;
-		//环形队列
+		//环形队列,idx到达环形缓冲区末尾
         if (server.repl_backlog_idx == server.repl_backlog_size)
             server.repl_backlog_idx = 0;
         len -= thislen;
@@ -161,7 +181,8 @@ void feedReplicationBacklog(void *ptr, size_t len) {
     if (server.repl_backlog_histlen > server.repl_backlog_size)
         server.repl_backlog_histlen = server.repl_backlog_size;
     /* Set the offset of the first byte we have in the backlog. */
-	//在复积压缓冲区中的，复制便宜首地址
+	//复制偏移首地址,对应于复制积压缓冲区中的首地址
+	//repl_backlog_off为复制偏移首地址，对应于master_repl_offset（对应于缓冲区中复制偏移队尾）
     server.repl_backlog_off = server.master_repl_offset -
                               server.repl_backlog_histlen + 1;
 }
@@ -180,6 +201,7 @@ void feedReplicationBacklogWithObject(robj *o) {
         len = sdslen(o->ptr);
         p = o->ptr;
     }
+	//添加p到复制积压缓冲区
     feedReplicationBacklog(p,len);
 }
 
@@ -222,6 +244,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
             int dictid_len;
 
             dictid_len = ll2string(llstr,sizeof(llstr),dictid);
+			//select dbNum
             selectcmd = createObject(OBJ_STRING,
                 sdscatprintf(sdsempty(),
                 "*2\r\n$6\r\nSELECT\r\n$%d\r\n%s\r\n",

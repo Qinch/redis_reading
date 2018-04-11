@@ -591,9 +591,11 @@ int anetPeerToString(int fd, char *ip, size_t ip_len, int *port) {
     if (getpeername(fd,(struct sockaddr*)&sa,&salen) == -1) goto error;
     if (ip_len == 0) goto error;
 
+	//IPv4
     if (sa.ss_family == AF_INET) {
         struct sockaddr_in *s = (struct sockaddr_in *)&sa;
         if (ip) inet_ntop(AF_INET,(void*)&(s->sin_addr),ip,ip_len);
+		//network to host 
         if (port) *port = ntohs(s->sin_port);
     } else if (sa.ss_family == AF_INET6) {
         struct sockaddr_in6 *s = (struct sockaddr_in6 *)&sa;

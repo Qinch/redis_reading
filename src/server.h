@@ -1084,16 +1084,21 @@ struct redisServer {
     /* Replication (master) */
     char replid[CONFIG_RUN_ID_SIZE+1];  /* My current replication ID. */
     char replid2[CONFIG_RUN_ID_SIZE+1]; /* replid inherited from master*/
+	//masterg的当前偏移量，对应于复制积压缓冲区的最后一个byte
     long long master_repl_offset;   /* My current replication offset */
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
 	//复制积压缓冲区，用于部分同步
     char *repl_backlog;             /* Replication backlog for partial syncs */
+	//复制积压缓冲区的大小
     long long repl_backlog_size;    /* Backlog circular buffer size */
+	//复制积压缓冲区中已有数据length
     long long repl_backlog_histlen; /* Backlog actual data length */
+	//复制积压缓冲区下一个byte写入的索引
     long long repl_backlog_idx;     /* Backlog circular buffer current offset,
                                        that is the next byte will'll write to.*/
+	//master的复制积压缓冲区中的首偏移量
     long long repl_backlog_off;     /* Replication "master offset" of first
                                        byte in the replication backlog buffer.*/
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
