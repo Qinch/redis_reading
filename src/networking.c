@@ -581,8 +581,10 @@ void addReplyBulkLen(client *c, robj *obj) {
 
 /* Add a Redis Object as a bulk reply */
 void addReplyBulk(client *c, robj *obj) {
+	//$num
     addReplyBulkLen(c,obj);
     addReply(c,obj);
+	//\r\n
     addReply(c,shared.crlf);
 }
 

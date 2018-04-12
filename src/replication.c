@@ -189,6 +189,7 @@ void feedReplicationBacklog(void *ptr, size_t len) {
 
 /* Wrapper for feedReplicationBacklog() that takes Redis string objects
  * as input. */
+//robj作为输入，添加到复制积压缓冲区
 void feedReplicationBacklogWithObject(robj *o) {
     char llstr[LONG_STR_SIZE];
     void *p;
@@ -279,8 +280,10 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
         len = ll2string(aux+1,sizeof(aux)-1,argc);
         aux[len+1] = '\r';
         aux[len+2] = '\n';
+		//放到积压缓冲区
         feedReplicationBacklog(aux,len+3);
 
+		//遍历每个argv
         for (j = 0; j < argc; j++) {
             long objlen = stringObjectLen(argv[j]);
 
@@ -291,8 +294,11 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
             len = ll2string(aux+1,sizeof(aux)-1,objlen);
             aux[len+1] = '\r';
             aux[len+2] = '\n';
+			//$num\r\n
             feedReplicationBacklog(aux,len+3);
+			//string
             feedReplicationBacklogWithObject(argv[j]);
+			//\r\n
             feedReplicationBacklog(aux+len+1,2);
         }
     }
@@ -300,6 +306,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
     /* Write the command to every slave. */
 	//发送给slave
     listRewind(slaves,&li);
+	//遍历每个slave
     while((ln = listNext(&li))) {
         client *slave = ln->value;
 
@@ -311,6 +318,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
          * or are already in sync with the master. */
 
         /* Add the multi bulk length. */
+		//*num
         addReplyMultiBulkLen(slave,argc);
 
         /* Finally any additional argument that was not stored inside the
@@ -338,8 +346,10 @@ void replicationFeedSlavesFromMasterStream(list *slaves, char *buf, size_t bufle
         printf("\n");
     }
 
+	//添加到slave的积压缓冲区中
     if (server.repl_backlog) feedReplicationBacklog(buf,buflen);
     listRewind(slaves,&li);
+	//遍历每个sub-slave
     while((ln = listNext(&li))) {
         client *slave = ln->value;
 
@@ -349,6 +359,7 @@ void replicationFeedSlavesFromMasterStream(list *slaves, char *buf, size_t bufle
     }
 }
 
+// 
 void replicationFeedMonitors(client *c, list *monitors, int dictid, robj **argv, int argc) {
     listNode *ln;
     listIter li;
@@ -391,11 +402,13 @@ void replicationFeedMonitors(client *c, list *monitors, int dictid, robj **argv,
 /* Feed the slave 'c' with the replication backlog starting from the
  * specified 'offset' up to the end of the backlog. */
 
+//从某个offset开始，复制积压缓冲区的结尾
 long long addReplyReplicationBacklog(client *c, long long offset) {
     long long j, skip, len;
 
     serverLog(LL_DEBUG, "[PSYNC] Slave request offset: %lld", offset);
 
+	//复制积压缓冲区为空
     if (server.repl_backlog_histlen == 0) {
         serverLog(LL_DEBUG, "[PSYNC] Backlog history len is zero");
         return 0;
@@ -416,12 +429,14 @@ long long addReplyReplicationBacklog(client *c, long long offset) {
 
     /* Point j to the oldest byte, that is actually our
      * server.repl_backlog_off byte. */
+	//获取复制积压缓冲区中的第一个byte
     j = (server.repl_backlog_idx +
         (server.repl_backlog_size-server.repl_backlog_histlen)) %
         server.repl_backlog_size;
     serverLog(LL_DEBUG, "[PSYNC] Index of first byte: %lld", j);
 
     /* Discard the amount of data to seek to the specified 'offset'. */
+	//跳过skip bytes
     j = (j + skip) % server.repl_backlog_size;
 
     /* Feed slave with data. Since it is a circular buffer we have to
@@ -434,10 +449,12 @@ long long addReplyReplicationBacklog(client *c, long long offset) {
             (server.repl_backlog_size - j) : len;
 
         serverLog(LL_DEBUG, "[PSYNC] addReply() length: %lld", thislen);
+		//添加到输出缓冲区
         addReplySds(c,sdsnewlen(server.repl_backlog + j, thislen));
         len -= thislen;
         j = 0;
     }
+	//返回值为发送的bytes数量
     return server.repl_backlog_histlen - skip;
 }
 
@@ -494,6 +511,7 @@ int replicationSetupSlaveForFullResync(client *slave, long long offset) {
  *
  * On success return C_OK, otherwise C_ERR is returned and we proceed
  * with the usual full resync. */
+
 int masterTryPartialResynchronization(client *c) {
     long long psync_offset, psync_len;
     char *master_replid = c->argv[1]->ptr;
