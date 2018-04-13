@@ -850,6 +850,9 @@ void syncCommand(client *c) {
  * In the future the same command can be used in order to configure
  * the replication to initiate an incremental replication instead of a
  * full resync. */
+//REPLCONF listening-port portnum
+//REPLCONF ACK OFFSET
+//对REPLCONF命令进行解析
 void replconfCommand(client *c) {
     int j;
 
@@ -865,6 +868,7 @@ void replconfCommand(client *c) {
         if (!strcasecmp(c->argv[j]->ptr,"listening-port")) {
             long port;
 
+			//获取端口号
             if ((getLongFromObjectOrReply(c,c->argv[j+1],
                     &port,NULL) != C_OK))
                 return;
@@ -885,20 +889,26 @@ void replconfCommand(client *c) {
             else if (!strcasecmp(c->argv[j+1]->ptr,"psync2"))
                 c->slave_capa |= SLAVE_CAPA_PSYNC2;
         } else if (!strcasecmp(c->argv[j]->ptr,"ack")) {
+			//REPLCONF ACK OFFSET
             /* REPLCONF ACK is used by slave to inform the master the amount
              * of replication stream that it processed so far. It is an
              * internal only command that normal clients should never use. */
             long long offset;
 
+			//如果客户端不是slave
             if (!(c->flags & CLIENT_SLAVE)) return;
+			//获取OFFSET
             if ((getLongLongFromObject(c->argv[j+1], &offset) != C_OK))
                 return;
+			//如果offset大于repl_ack_off,则更新repl_ack_off
             if (offset > c->repl_ack_off)
                 c->repl_ack_off = offset;
+			//更新收到ACK的时间
             c->repl_ack_time = server.unixtime;
             /* If this was a diskless replication, we need to really put
              * the slave online when the first ACK is received (which
              * confirms slave is online and ready to get more data). */
+			//PSYNC已经完成，进入命令传播阶段
             if (c->repl_put_online_on_ack && c->replstate == SLAVE_STATE_ONLINE)
                 putSlaveOnline(c);
             /* Note: this command does not reply anything! */
@@ -929,31 +939,38 @@ void replconfCommand(client *c) {
  *    command disables it, so that we can accumulate output buffer without
  *    sending it to the slave.
  * 3) Update the count of good slaves. */
+//同步已经完成(PSYNC),进入命令传播阶段
 void putSlaveOnline(client *slave) {
     slave->replstate = SLAVE_STATE_ONLINE;
     slave->repl_put_online_on_ack = 0;
     slave->repl_ack_time = server.unixtime; /* Prevent false timeout. */
+	//注册写事件
     if (aeCreateFileEvent(server.el, slave->fd, AE_WRITABLE,
         sendReplyToClient, slave) == AE_ERR) {
         serverLog(LL_WARNING,"Unable to register writable event for slave bulk transfer: %s", strerror(errno));
         freeClient(slave);
         return;
     }
+	//更新slave中没有延迟超过min-salves-max-lag的数量
     refreshGoodSlavesCount();
     serverLog(LL_NOTICE,"Synchronization with slave %s succeeded",
         replicationGetSlaveName(slave));
 }
 
+//发送bulk到slave
 void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
     client *slave = privdata;
     UNUSED(el);
     UNUSED(mask);
+	//buf缓冲区大小为16k
     char buf[PROTO_IOBUF_LEN];
     ssize_t nwritten, buflen;
 
     /* Before sending the RDB file, we send the preamble as configured by the
      * replication process. Currently the preamble is just the bulk count of
      * the file in the form "$<length>\r\n". */
+	//在发送RDB文件之前，先发送preamble(序言)
+	//preamble为bulk数量
     if (slave->replpreamble) {
         nwritten = write(fd,slave->replpreamble,sdslen(slave->replpreamble));
         if (nwritten == -1) {
@@ -962,8 +979,10 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
             freeClient(slave);
             return;
         }
+		//写到网络中的bytes数量
         server.stat_net_output_bytes += nwritten;
         sdsrange(slave->replpreamble,nwritten,-1);
+		//predsamble已经发送完毕
         if (sdslen(slave->replpreamble) == 0) {
             sdsfree(slave->replpreamble);
             slave->replpreamble = NULL;
@@ -990,12 +1009,16 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
         }
         return;
     }
+	//rdb文件已经发送的偏移量
     slave->repldboff += nwritten;
     server.stat_net_output_bytes += nwritten;
+	//发送RDB文件完毕
     if (slave->repldboff == slave->repldbsize) {
         close(slave->repldbfd);
         slave->repldbfd = -1;
+		//删除写事件
         aeDeleteFileEvent(server.el,slave->fd,AE_WRITABLE);
+		//同步阶段完成，进入命令广播阶段
         putSlaveOnline(slave);
     }
 }
@@ -1014,6 +1037,8 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
  * otherwise C_ERR is passed to the function.
  * The 'type' argument is the type of the child that terminated
  * (if it had a disk or socket target). */
+
+//bgsavea结束后，将RDB文件发送给slave
 void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
     listNode *ln;
     int startbgsave = 0;
@@ -1029,6 +1054,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
             mincapa = (mincapa == -1) ? slave->slave_capa :
                                         (mincapa & slave->slave_capa);
         } else if (slave->replstate == SLAVE_STATE_WAIT_BGSAVE_END) {
+			//RDB文件已经produce OK
             struct redis_stat buf;
 
             /* If this was an RDB on disk save, we have to prepare to send
@@ -1036,6 +1062,8 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
              * already an RDB -> Slaves socket transfer, used in the case of
              * diskless replication, our work is trivial, we can just put
              * the slave online. */
+			//rdb writes to slave socket
+			//发送缓冲区中的数据
             if (type == RDB_CHILD_TYPE_SOCKET) {
                 serverLog(LL_NOTICE,
                     "Streamed RDB transfer with slave %s succeeded (socket). Waiting for REPLCONF ACK from slave to enable streaming",
@@ -1054,19 +1082,25 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
                     serverLog(LL_WARNING,"SYNC failed. BGSAVE child returned an error");
                     continue;
                 }
+				//打开RDB文件
                 if ((slave->repldbfd = open(server.rdb_filename,O_RDONLY)) == -1 ||
                     redis_fstat(slave->repldbfd,&buf) == -1) {
                     freeClient(slave);
                     serverLog(LL_WARNING,"SYNC failed. Can't open/stat DB after BGSAVE: %s", strerror(errno));
                     continue;
                 }
+				//rdb偏移量设置为0
                 slave->repldboff = 0;
+				//设置rdb文件的大小
                 slave->repldbsize = buf.st_size;
+				//repl状态为发送RDB文件
                 slave->replstate = SLAVE_STATE_SEND_BULK;
+				//设置rdb的序言
                 slave->replpreamble = sdscatprintf(sdsempty(),"$%lld\r\n",
                     (unsigned long long) slave->repldbsize);
 
                 aeDeleteFileEvent(server.el,slave->fd,AE_WRITABLE);
+				//注册写事件
                 if (aeCreateFileEvent(server.el, slave->fd, AE_WRITABLE, sendBulkToSlave, slave) == AE_ERR) {
                     freeClient(slave);
                     continue;
@@ -2316,6 +2350,7 @@ void refreshGoodSlavesCount(void) {
     listRewind(server.slaves,&li);
     while((ln = listNext(&li))) {
         client *slave = ln->value;
+		//获取lag
         time_t lag = server.unixtime - slave->repl_ack_time;
 
         if (slave->replstate == SLAVE_STATE_ONLINE &&

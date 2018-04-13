@@ -653,6 +653,8 @@ int getLongDoubleFromObjectOrReply(client *c, robj *o, long double *target, cons
     return C_OK;
 }
 
+//从robj中获取LONG LONG类型的整数
+//如果o=NULL, 则*target =0
 int getLongLongFromObject(robj *o, long long *target) {
     long long value;
 
@@ -673,6 +675,7 @@ int getLongLongFromObject(robj *o, long long *target) {
     return C_OK;
 }
 
+//从robj中获取longlong类型的整数，如果获取失败，则添加ReplyError信息
 int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const char *msg) {
     long long value;
     if (getLongLongFromObject(o, &value) != C_OK) {
@@ -687,6 +690,7 @@ int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const ch
     return C_OK;
 }
 
+//从robj中获取整形数字，如果超过LONG表示的返回，则ReplyError信息
 int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) {
     long long value;
 
