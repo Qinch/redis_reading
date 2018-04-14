@@ -316,7 +316,10 @@ robj *dbUnshareStringValue(redisDb *db, robj *key, robj *o) {
  * On success the fuction returns the number of keys removed from the
  * database(s). Otherwise -1 is returned in the specific case the
  * DB number is out of range, and errno is set to EINVAL. */
+//dbnum=-1表示清空所有DBs
+//
 long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
+	//async表示异步进行
     int j, async = (flags & EMPTYDB_ASYNC);
     long long removed = 0;
 
@@ -331,7 +334,9 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
         if (async) {
             emptyDbAsync(&server.db[j]);
         } else {
+			//清空数据库
             dictEmpty(server.db[j].dict,callback);
+			//清空过期字典
             dictEmpty(server.db[j].expires,callback);
         }
     }
