@@ -1152,6 +1152,7 @@ void shiftReplicationId(void) {
 
 /* Returns 1 if the given replication state is a handshake state,
  * 0 otherwise. */
+//[3,13]
 int slaveIsInHandshakeState(void) {
     return server.repl_state >= REPL_STATE_RECEIVE_PONG &&
            server.repl_state <= REPL_STATE_RECEIVE_PSYNC;
@@ -1214,6 +1215,8 @@ void restartAOF() {
 
 /* Asynchronously read the SYNC payload we receive from a master */
 #define REPL_MAX_WRITTEN_BEFORE_FSYNC (1024*1024*8) /* 8 MB */
+//同步读取参数
+//WRITABLE事件的handler
 void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     char buf[4096];
     ssize_t nread, readlen;
@@ -1224,13 +1227,17 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     /* Static vars used to hold the EOF mark, and the last bytes received
      * form the server: when they match, we reached the end of the transfer. */
+	
     static char eofmark[CONFIG_RUN_ID_SIZE];
     static char lastbytes[CONFIG_RUN_ID_SIZE];
+	//usemark=1 means diskless transfer
+	//usemark=0 means RDB file transfer
     static int usemark = 0;
 
     /* If repl_transfer_size == -1 we still have to read the bulk length
      * from the master reply. */
     if (server.repl_transfer_size == -1) {
+		//读取一行（以'\n'或者'\r\n'结尾）
         if (syncReadLine(fd,buf,1024,server.repl_syncio_timeout*1000) == -1) {
             serverLog(LL_WARNING,
                 "I/O error reading bulk count from MASTER: %s",
@@ -1247,6 +1254,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
             /* At this stage just a newline works as a PING in order to take
              * the connection live. So we refresh our last interaction
              * timestamp. */
+			//最后一次read的时间
             server.repl_transfer_lastio = server.unixtime;
             return;
         } else if (buf[0] != '$') {
@@ -1264,17 +1272,26 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
          * At the end of the file the announced delimiter is transmitted. The
          * delimiter is long and random enough that the probability of a
          * collision with the actual file content can be ignored. */
+		//the later form:diskless transfers
+		//buft[0]='$'
+		//$EOF:
         if (strncmp(buf+1,"EOF:",4) == 0 && strlen(buf+5) >= CONFIG_RUN_ID_SIZE) {
             usemark = 1;
+			//40bytes delimiter
             memcpy(eofmark,buf+5,CONFIG_RUN_ID_SIZE);
+			//传输的末尾40bytes delimiter暂时设置为0
             memset(lastbytes,0,CONFIG_RUN_ID_SIZE);
             /* Set any repl_transfer_size to avoid entering this code path
              * at the next call. */
+			//大小为止，因为这是diskless transfers
             server.repl_transfer_size = 0;
             serverLog(LL_NOTICE,
                 "MASTER <-> SLAVE sync: receiving streamed RDB from master");
         } else {
+			//RDB文件传输
             usemark = 0;
+			//$count
+			//获取RDB文件的大小
             server.repl_transfer_size = strtol(buf+1,NULL,10);
             serverLog(LL_NOTICE,
                 "MASTER <-> SLAVE sync: receiving %lld bytes from master",
@@ -1284,9 +1301,12 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* Read bulk data */
+	//diskless transfer
     if (usemark) {
+		//buf数组的长度
         readlen = sizeof(buf);
     } else {
+		//仍然需要从master读取的数据大小 
         left = server.repl_transfer_size - server.repl_transfer_read;
         readlen = (left < (signed)sizeof(buf)) ? left : (signed)sizeof(buf);
     }
@@ -1298,12 +1318,14 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
         cancelReplicationHandshake();
         return;
     }
+	//从网络中读取的字节数量
     server.stat_net_input_bytes += nread;
 
     /* When a mark is used, we want to detect EOF asap in order to avoid
      * writing the EOF mark into the file... */
     int eof_reached = 0;
 
+	//处理diskless transfers form
     if (usemark) {
         /* Update the last bytes array, and check if it matches our delimiter.*/
         if (nread >= CONFIG_RUN_ID_SIZE) {
@@ -1313,10 +1335,12 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
             memmove(lastbytes,lastbytes+nread,rem);
             memcpy(lastbytes+rem,buf,nread);
         }
+		//如果eofmark与lastbytes字符串相等，表示diskless transfers结束
         if (memcmp(lastbytes,eofmark,CONFIG_RUN_ID_SIZE) == 0) eof_reached = 1;
     }
 
     server.repl_transfer_lastio = server.unixtime;
+	//写入repl_transfer_fd文件
     if (write(server.repl_transfer_fd,buf,nread) != nread) {
         serverLog(LL_WARNING,"Write error or short write writing to the DB dump file needed for MASTER <-> SLAVE synchronization: %s", strerror(errno));
         goto error;
@@ -1324,6 +1348,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     server.repl_transfer_read += nread;
 
     /* Delete the last 40 bytes from the file if we reached EOF. */
+	//diskless transfer读取完毕，删除delimiter
     if (usemark && eof_reached) {
         if (ftruncate(server.repl_transfer_fd,
             server.repl_transfer_read - CONFIG_RUN_ID_SIZE) == -1)
@@ -1336,6 +1361,8 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     /* Sync data on disk from time to time, otherwise at the end of the transfer
      * we may suffer a big delay as the memory buffers are copied into the
      * actual disk. */
+	
+	//如果自从上次sync，从master读取的数据大于REPL_MAX_WRITTEN_BEFORE_FYSN，则进行sync
     if (server.repl_transfer_read >=
         server.repl_transfer_last_fsync_off + REPL_MAX_WRITTEN_BEFORE_FSYNC)
     {
@@ -1347,6 +1374,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* Check if the transfer is now complete */
+	//RDB file transfers endds
     if (!usemark) {
         if (server.repl_transfer_read == server.repl_transfer_size)
             eof_reached = 1;
@@ -1355,6 +1383,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (eof_reached) {
         int aof_is_enabled = server.aof_state != AOF_OFF;
 
+		//renamee tmp文件
         if (rename(server.repl_transfer_tmpfile,server.rdb_filename) == -1) {
             serverLog(LL_WARNING,"Failed trying to rename the temp DB into dump.rdb in MASTER <-> SLAVE synchronization: %s", strerror(errno));
             cancelReplicationHandshake();

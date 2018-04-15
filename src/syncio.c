@@ -127,6 +127,7 @@ ssize_t syncRead(int fd, char *ptr, ssize_t size, long long timeout) {
  * On success the number of bytes read is returned, otherwise -1.
  * On success the string is always correctly terminated with a 0 byte. */
 //如果成功，string以'\0'结尾
+
 ssize_t syncReadLine(int fd, char *ptr, ssize_t size, long long timeout) {
     ssize_t nread = 0;
 
@@ -134,9 +135,12 @@ ssize_t syncReadLine(int fd, char *ptr, ssize_t size, long long timeout) {
     while(size) {
         char c;
 
+		//同步读取一个字符
         if (syncRead(fd,&c,1,timeout) == -1) return -1;
+		//如果当前读取的字符为'\n'
         if (c == '\n') {
             *ptr = '\0';
+			//如果读取的是'\r\n'或者仅仅是'\n'
             if (nread && *(ptr-1) == '\r') *(ptr-1) = '\0';
             return nread;
         } else {
