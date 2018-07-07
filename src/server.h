@@ -588,7 +588,7 @@ typedef struct redisObject {
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits decreas time). */
     int refcount;
-    void *ptr;
+   void *ptr;
 } robj;
 
 /* Macro used to initialize a Redis object allocated on the stack.
@@ -608,7 +608,10 @@ struct evictionPoolEntry; /* Defined in evict.c */
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
 typedef struct redisDb {
+	//一个数据库：每个htentry为一个key-value
+	//该数据库称为：keyspace（键空间）
     dict *dict;                 /* The keyspace for this DB */
+	//所有键的过期时间
     dict *expires;              /* Timeout of keys with a timeout set */
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
     dict *ready_keys;           /* Blocked keys that received a PUSH */
@@ -672,31 +675,44 @@ typedef struct readyList {
 
 /* With multiplexing we need to take per-client state.
  * Clients are taken in a linked list. */
+//客户端状态
 typedef struct client {
     uint64_t id;            /* Client incremental unique ID. */
     int fd;                 /* Client socket. */
+	//指向客户端的当前目标数据库
+	//SELECT命令的实现：通过db指向服务器中不同的数据库
     redisDb *db;            /* Pointer to currently SELECTed DB. */
+	//客户端的名字
     robj *name;             /* As set by CLIENT SETNAME. */
+	//客户端的输入缓冲区
     sds querybuf;           /* Buffer we use to accumulate client queries. */
     sds pending_querybuf;   /* If this is a master, this buffer represents the
                                yet not applied replication stream that we
                                are receiving from the master. */
     size_t querybuf_peak;   /* Recent (100ms or more) peak of querybuf size. */
+	//客户端命令的参数个数
     int argc;               /* Num of arguments of current command. */
     robj **argv;            /* Arguments of current command. */
+	//指向命令所对应的redisCommand结构
     struct redisCommand *cmd, *lastcmd;  /* Last command executed. */
     int reqtype;            /* Request protocol type: PROTO_REQ_* */
+	//待从缓冲区读取的参数(bulk)数量
     int multibulklen;       /* Number of multi bulk arguments left to read. */
+	//当前参数(bulk)的长度
     long bulklen;           /* Length of bulk argument in multi bulk request. */
+	//输出缓冲区：可变大小
     list *reply;            /* List of reply objects to send to the client. */
     unsigned long long reply_bytes; /* Tot bytes of objects in reply list. */
     size_t sentlen;         /* Amount of bytes already sent in the current
                                buffer or object being sent. */
+	//客户端的创建时间
     time_t ctime;           /* Client creation time. */
+	//客户端与服务器之间的最后交互时间
     time_t lastinteraction; /* Time of the last interaction, used for timeout */
     time_t obuf_soft_limit_reached_time;
     int flags;              /* Client flags: CLIENT_* macros. */
     int authenticated;      /* When requirepass is non-NULL. */
+	//标记slave的复制状态
     int replstate;          /* Replication state if this is a slave. */
     int repl_put_online_on_ack; /* Install slave write handler on ACK. */
     int repldbfd;           /* Replication DB file descriptor. */
@@ -724,12 +740,17 @@ typedef struct client {
     sds peerid;             /* Cached peer ID. */
 
     /* Response buffer */
+	//服务器输出缓冲区
     int bufpos;
     char buf[PROTO_REPLY_CHUNK_BYTES];
 } client;
 
+//save选项设置的保存条件:
+//save seconds changes
+//服务器在seconds秒内，至少修改changes次
 struct saveparam {
     time_t seconds;
+	//对数据库的修改次数
     int changes;
 };
 
@@ -877,6 +898,7 @@ struct redisServer {
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
     int hz;                     /* serverCron() calls frequency in hertz */
+	//创建的数据库数组
     redisDb *db;
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
@@ -957,6 +979,7 @@ struct redisServer {
     unsigned long slowlog_max_len;     /* SLOWLOG max number of items logged */
     size_t resident_set_size;       /* RSS sampled in serverCron(). */
     long long stat_net_input_bytes; /* Bytes read from network. */
+	//totoal bytes that written to network
     long long stat_net_output_bytes; /* Bytes written to network. */
     size_t stat_rdb_cow_bytes;      /* Copy on write bytes during RDB saving. */
     size_t stat_aof_cow_bytes;      /* Copy on write bytes during AOF rewrite. */
@@ -980,6 +1003,7 @@ struct redisServer {
     int active_defrag_cycle_min;       /* minimal effort for defrag in CPU percentage */
     int active_defrag_cycle_max;       /* maximal effort for defrag in CPU percentage */
     size_t client_max_querybuf_len; /* Limit for client query buffer length */
+	//创建的数据库的数量
     int dbnum;                      /* Total number of configured DBs */
     int supervised;                 /* 1 if supervised, 0 otherwise. */
     int supervised_mode;            /* See SUPERVISED_* */
@@ -1022,14 +1046,19 @@ struct redisServer {
                                       to child process. */
     sds aof_child_diff;             /* AOF diff accumulator child side. */
     /* RDB persistence */
+	//距离上一次RDB save之后，数据库进行了dirty次修改
     long long dirty;                /* Changes to DB from the last save */
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
+	//RDB save子进程的ID
     pid_t rdb_child_pid;            /* PID of RDB saving child */
+	//用于save选项数组
     struct saveparam *saveparams;   /* Save points array for RDB */
     int saveparamslen;              /* Number of saving points */
+	//rdb文件名
     char *rdb_filename;             /* Name of RDB file */
     int rdb_compression;            /* Use compression in RDB? */
     int rdb_checksum;               /* Use RDB checksum? */
+	//上一次数据库保存成功的时间
     time_t lastsave;                /* Unix time of last successful save */
     time_t lastbgsave_try;          /* Unix time of last attempted bgsave */
     time_t rdb_save_time_last;      /* Time used by last RDB save run. */
@@ -1057,17 +1086,24 @@ struct redisServer {
     /* Replication (master) */
     char replid[CONFIG_RUN_ID_SIZE+1];  /* My current replication ID. */
     char replid2[CONFIG_RUN_ID_SIZE+1]; /* replid inherited from master*/
+	//masterg的当前偏移量，对应于复制积压缓冲区的最后一个byte
     long long master_repl_offset;   /* My current replication offset */
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
+	//复制积压缓冲区，用于部分同步
     char *repl_backlog;             /* Replication backlog for partial syncs */
+	//复制积压缓冲区的大小
     long long repl_backlog_size;    /* Backlog circular buffer size */
+	//复制积压缓冲区中已有数据length
     long long repl_backlog_histlen; /* Backlog actual data length */
+	//复制积压缓冲区下一个byte写入的索引
     long long repl_backlog_idx;     /* Backlog circular buffer current offset,
                                        that is the next byte will'll write to.*/
+	//master的复制积压缓冲区中的首偏移量
     long long repl_backlog_off;     /* Replication "master offset" of first
                                        byte in the replication backlog buffer.*/
+    time_t repl_backlog_time_limit; /* Time without slaves after the backlog
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
                                        gets released. */
     time_t repl_no_slaves_since;    /* We have no slaves since that time.
@@ -1084,6 +1120,7 @@ struct redisServer {
     int repl_timeout;               /* Timeout after N seconds of master idle */
     client *master;     /* Client that is master for this slave */
     client *cached_master; /* Cached master to be reused for PSYNC. */
+	//同步读的超时时间
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
     int repl_state;          /* Replication status if the instance is a slave */
     off_t repl_transfer_size; /* Size of RDB to read from master during sync. */
@@ -1938,11 +1975,11 @@ void zunionstoreCommand(client *c);
 void zinterstoreCommand(client *c);
 void zscanCommand(client *c);
 void hkeysCommand(client *c);
+void configCommand(client *c);
 void hvalsCommand(client *c);
 void hgetallCommand(client *c);
 void hexistsCommand(client *c);
 void hscanCommand(client *c);
-void configCommand(client *c);
 void hincrbyCommand(client *c);
 void hincrbyfloatCommand(client *c);
 void subscribeCommand(client *c);

@@ -61,10 +61,14 @@
 #include "server.h"
 #include "bio.h"
 
+//线程数组
 static pthread_t bio_threads[BIO_NUM_OPS];
+//互斥锁
 static pthread_mutex_t bio_mutex[BIO_NUM_OPS];
+//条件变量
 static pthread_cond_t bio_newjob_cond[BIO_NUM_OPS];
 static pthread_cond_t bio_step_cond[BIO_NUM_OPS];
+//jobs队列
 static list *bio_jobs[BIO_NUM_OPS];
 /* The following array is used to hold the number of pending jobs for every
  * OP type. This allows us to export the bioPendingJobsOfType() API that is
@@ -80,6 +84,7 @@ struct bio_job {
     time_t time; /* Time at which the job was created. */
     /* Job specific arguments pointers. If we need to pass more than three
      * arguments we can just pass a pointer to a structure or alike. */
+	//如果想传递超过3个args，可以把参数封装在一个结构体中，作为一个arg传递
     void *arg1, *arg2, *arg3;
 };
 
@@ -100,6 +105,7 @@ void bioInit(void) {
     int j;
 
     /* Initialization of state vars and objects */
+	//初始化mutex,cond,and jobs list
     for (j = 0; j < BIO_NUM_OPS; j++) {
         pthread_mutex_init(&bio_mutex[j],NULL);
         pthread_cond_init(&bio_newjob_cond[j],NULL);
@@ -118,6 +124,7 @@ void bioInit(void) {
     /* Ready to spawn our threads. We use the single argument the thread
      * function accepts in order to pass the job ID the thread is
      * responsible of. */
+	//创建BIO_NUM_OPS个线程
     for (j = 0; j < BIO_NUM_OPS; j++) {
         void *arg = (void*)(unsigned long) j;
         if (pthread_create(&thread,&attr,bioProcessBackgroundJobs,arg) != 0) {
@@ -128,6 +135,7 @@ void bioInit(void) {
     }
 }
 
+//向jobs list中添加job
 void bioCreateBackgroundJob(int type, void *arg1, void *arg2, void *arg3) {
     struct bio_job *job = zmalloc(sizeof(*job));
 
@@ -136,12 +144,17 @@ void bioCreateBackgroundJob(int type, void *arg1, void *arg2, void *arg3) {
     job->arg2 = arg2;
     job->arg3 = arg3;
     pthread_mutex_lock(&bio_mutex[type]);
+	//将job添加到list
     listAddNodeTail(bio_jobs[type],job);
     bio_pending[type]++;
+	//条件变量signal
     pthread_cond_signal(&bio_newjob_cond[type]);
     pthread_mutex_unlock(&bio_mutex[type]);
 }
 
+//处理job
+//线程处理函数
+//函数参数为type
 void *bioProcessBackgroundJobs(void *arg) {
     struct bio_job *job;
     unsigned long type = (unsigned long) arg;
@@ -157,6 +170,7 @@ void *bioProcessBackgroundJobs(void *arg) {
     /* Make the thread killable at any time, so that bioKillThreads()
      * can work reliably. */
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	//收到cancel信号，立即取消
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
     pthread_mutex_lock(&bio_mutex[type]);
@@ -216,6 +230,7 @@ void *bioProcessBackgroundJobs(void *arg) {
 }
 
 /* Return the number of pending jobs of the specified type. */
+//type类型中pending的job数量
 unsigned long long bioPendingJobsOfType(int type) {
     unsigned long long val;
     pthread_mutex_lock(&bio_mutex[type]);
@@ -234,6 +249,7 @@ unsigned long long bioPendingJobsOfType(int type) {
  * This function is useful when from another thread, we want to wait
  * a bio.c thread to do more work in a blocking way.
  */
+//如果当前joblist中有job，则阻塞，等待下一个job处理完成，然后在返回pending中jobs的数量
 unsigned long long bioWaitStepOfType(int type) {
     unsigned long long val;
     pthread_mutex_lock(&bio_mutex[type]);

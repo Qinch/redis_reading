@@ -1182,6 +1182,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 /* This function gets called every time Redis is entering the
  * main loop of the event driven library, that is, before to sleep
  * for ready file descriptors. */
+//每次进入epoll_wait或者select等sleep函数之前执行的
 void beforeSleep(struct aeEventLoop *eventLoop) {
     UNUSED(eventLoop);
 
@@ -1228,6 +1229,8 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     flushAppendOnlyFile(0);
 
     /* Handle writes with pending output buffers. */
+	//处理各个client的输出缓冲区中的数据
+	//如果write返回-1，并且输出缓冲区中还有数据，则注册写事件
     handleClientsWithPendingWrites();
 
     /* Before we are going to sleep, let the threads access the dataset by
@@ -1707,9 +1710,11 @@ int listenToPort(int port, int *fds, int *count) {
             int unsupported = 0;
             /* Bind * for both IPv6 and IPv4, we enter here only if
              * server.bindaddr_count == 0. */
+			//fd[*count]为listen的fd
             fds[*count] = anetTcp6Server(server.neterr,port,NULL,
                 server.tcp_backlog);
             if (fds[*count] != ANET_ERR) {
+				//设置为非阻塞模式
                 anetNonBlock(NULL,fds[*count]);
                 (*count)++;
             } else if (errno == EAFNOSUPPORT) {
@@ -1793,6 +1798,7 @@ void initServer(void) {
     int j;
 
     signal(SIGHUP, SIG_IGN);
+	//如果关闭写，然后write会差生SIGPIPE信号
     signal(SIGPIPE, SIG_IGN);
     setupSignalHandlers();
 
@@ -1801,6 +1807,7 @@ void initServer(void) {
             server.syslog_facility);
     }
 
+	//获取进程Id
     server.pid = getpid();
     server.current_client = NULL;
     server.clients = listCreate();
@@ -1825,6 +1832,7 @@ void initServer(void) {
             strerror(errno));
         exit(1);
     }
+	//创建dbnum个dict,即dbnum个数据库
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
     /* Open the TCP listening socket for the user commands. */
@@ -1841,6 +1849,7 @@ void initServer(void) {
             serverLog(LL_WARNING, "Opening Unix socket: %s", server.neterr);
             exit(1);
         }
+		//设置成非阻塞
         anetNonBlock(NULL,server.sofd);
     }
 
@@ -1851,12 +1860,17 @@ void initServer(void) {
     }
 
     /* Create the Redis databases, and initialize other internal state. */
+	//创建数据库
     for (j = 0; j < server.dbnum; j++) {
+		//数据库
         server.db[j].dict = dictCreate(&dbDictType,NULL);
+		//过期dict
         server.db[j].expires = dictCreate(&keyptrDictType,NULL);
         server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
         server.db[j].ready_keys = dictCreate(&objectKeyPointerValueDictType,NULL);
+		//WATCHed keys
         server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);
+		//db ID
         server.db[j].id = j;
         server.db[j].avg_ttl = 0;
     }
@@ -1896,6 +1910,7 @@ void initServer(void) {
     /* Create the timer callback, this is our way to process many background
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
+	//创建定时器
     if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create event loop timers.");
         exit(1);
@@ -1903,7 +1918,11 @@ void initServer(void) {
 
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
+	//fd事件
+	//在事件处理器上注册handler, 处理listen fd上的可读事件(表示有新的连接到来)
     for (j = 0; j < server.ipfd_count; j++) {
+		//在每个listfd上创建event
+		//aeCreateFileEvent means epoll_ctl
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)
             {
@@ -1911,6 +1930,7 @@ void initServer(void) {
                     "Unrecoverable error creating server.ipfd file event.");
             }
     }
+	//unix域socket
     if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) serverPanic("Unrecoverable error creating server.sofd file event.");
 
@@ -2309,12 +2329,14 @@ void call(client *c, int flags) {
  * If C_OK is returned the client is still alive and valid and
  * other operations can be performed by the caller. Otherwise
  * if C_ERR is returned the client was destroyed (i.e. after QUIT). */
+//当从querybuff中解析出一个完整cmd之后，就调用该函数执行该cmd
 int processCommand(client *c) {
     /* The QUIT command is handled separately. Normal command procs will
      * go through checking for replication and QUIT will cause trouble
      * when FORCE_REPLICATION is enabled and would be implemented in
      * a regular command proc. */
     if (!strcasecmp(c->argv[0]->ptr,"quit")) {
+		//将返回值放入输出缓冲区
         addReply(c,shared.ok);
         c->flags |= CLIENT_CLOSE_AFTER_REPLY;
         return C_ERR;
@@ -2322,14 +2344,17 @@ int processCommand(client *c) {
 
     /* Now lookup the command and check ASAP about trivial error conditions
      * such as wrong arity, bad command name and so forth. */
+	//从cmd dict查找ptr cmd
     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
     if (!c->cmd) {
+		//如果处于事务状态，错误的命令入队，则标记为dirty exec
         flagTransaction(c);
         addReplyErrorFormat(c,"unknown command '%s'",
             (char*)c->argv[0]->ptr);
         return C_OK;
     } else if ((c->cmd->arity > 0 && c->cmd->arity != c->argc) ||
                (c->argc < -c->cmd->arity)) {
+		//如果命令参数个数不对
         flagTransaction(c);
         addReplyErrorFormat(c,"wrong number of arguments for '%s' command",
             c->cmd->name);
@@ -2487,6 +2512,7 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
+		//执行命令
         call(c,CMD_CALL_FULL);
         c->woff = server.master_repl_offset;
         if (listLength(server.ready_keys))
@@ -3867,7 +3893,9 @@ int main(int argc, char **argv) {
 
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeSetAfterSleepProc(server.el,afterSleep);
+	//进入event loop
     aeMain(server.el);
+	//删除event loop
     aeDeleteEventLoop(server.el);
     return 0;
 }

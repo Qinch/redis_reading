@@ -75,6 +75,7 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     struct epoll_event ee = {0}; /* avoid valgrind warning */
     /* If the fd was already monitored for some event, we need a MOD
      * operation. Otherwise we need an ADD operation. */
+	//add or mod
     int op = eventLoop->events[fd].mask == AE_NONE ?
             EPOLL_CTL_ADD : EPOLL_CTL_MOD;
 
@@ -96,7 +97,9 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
     if (mask & AE_READABLE) ee.events |= EPOLLIN;
     if (mask & AE_WRITABLE) ee.events |= EPOLLOUT;
     ee.data.fd = fd;
+	//mask != 0x0
     if (mask != AE_NONE) {
+		//mod
         epoll_ctl(state->epfd,EPOLL_CTL_MOD,fd,&ee);
     } else {
         /* Note, Kernel < 2.6.9 requires a non null event pointer even for

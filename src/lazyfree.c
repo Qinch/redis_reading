@@ -89,6 +89,7 @@ int dbAsyncDelete(redisDb *db, robj *key) {
  * lazy freeing. */
 void emptyDbAsync(redisDb *db) {
     dict *oldht1 = db->dict, *oldht2 = db->expires;
+	//创建新的dict
     db->dict = dictCreate(&dbDictType,NULL);
     db->expires = dictCreate(&keyptrDictType,NULL);
     atomicIncr(lazyfree_objects,dictSize(oldht1));

@@ -41,9 +41,12 @@
 /* Low level key lookup API, not actually called directly from commands
  * implementations that should instead rely on lookupKeyRead(),
  * lookupKeyWrite() and lookupKeyReadWithFlags(). */
+//获取键对象对应的值对象
 robj *lookupKey(redisDb *db, robj *key, int flags) {
+	//de为查找到的entry首地址
     dictEntry *de = dictFind(db->dict,key->ptr);
     if (de) {
+		//获取值对象
         robj *val = dictGetVal(de);
 
         /* Update the access time for the ageing algorithm.
@@ -157,7 +160,9 @@ robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
  * counter of the value if needed.
  *
  * The program is aborted if the key already exists. */
+//添加新的键值对
 void dbAdd(redisDb *db, robj *key, robj *val) {
+	//深拷贝
     sds copy = sdsdup(key->ptr);
     int retval = dictAdd(db->dict, copy, val);
 
@@ -235,10 +240,15 @@ robj *dbRandomKey(redisDb *db) {
 }
 
 /* Delete a key, value, and associated expiration entry if any, from the DB */
+//删除过期的entry,从expires和dict字典中进行删除
+//expires和dict中的entry的key指向同一个sds对象
 int dbSyncDelete(redisDb *db, robj *key) {
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
+	//从expires dict中删除entry
+	//expires中的entry的key并不会释放，因为expires的key释放函数为NULL
     if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr);
+	//从db->dict dict中删除entry
     if (dictDelete(db->dict,key->ptr) == DICT_OK) {
         if (server.cluster_enabled) slotToKeyDel(key);
         return 1;
@@ -306,7 +316,10 @@ robj *dbUnshareStringValue(redisDb *db, robj *key, robj *o) {
  * On success the fuction returns the number of keys removed from the
  * database(s). Otherwise -1 is returned in the specific case the
  * DB number is out of range, and errno is set to EINVAL. */
+//dbnum=-1表示清空所有DBs
+//
 long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
+	//async表示异步进行
     int j, async = (flags & EMPTYDB_ASYNC);
     long long removed = 0;
 
@@ -321,7 +334,9 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
         if (async) {
             emptyDbAsync(&server.db[j]);
         } else {
+			//清空数据库
             dictEmpty(server.db[j].dict,callback);
+			//清空过期字典
             dictEmpty(server.db[j].expires,callback);
         }
     }
@@ -336,9 +351,11 @@ long long emptyDb(int dbnum, int flags, void(callback)(void*)) {
     return removed;
 }
 
+//SELECT命令,数据库区间[0,dbnum)
 int selectDb(client *c, int id) {
     if (id < 0 || id >= server.dbnum)
         return C_ERR;
+	//设置目标数据库
     c->db = &server.db[id];
     return C_OK;
 }
@@ -1117,6 +1134,7 @@ int expireIfNeeded(redisDb *db, robj *key) {
     propagateExpire(db,key,server.lazyfree_lazy_expire);
     notifyKeyspaceEvent(NOTIFY_EXPIRED,
         "expired",key,db->id);
+
     return server.lazyfree_lazy_expire ? dbAsyncDelete(db,key) :
                                          dbSyncDelete(db,key);
 }

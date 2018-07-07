@@ -111,21 +111,27 @@ int rdbSaveLen(rio *rdb, uint64_t len) {
     unsigned char buf[2];
     size_t nwritten;
 
+	//len < 2^6
     if (len < (1<<6)) {
         /* Save a 6 bit len */
+		//00|
         buf[0] = (len&0xFF)|(RDB_6BITLEN<<6);
         if (rdbWriteRaw(rdb,buf,1) == -1) return -1;
         nwritten = 1;
     } else if (len < (1<<14)) {
         /* Save a 14 bit len */
+		//01|
+		//大端法：高位在低地址
         buf[0] = ((len>>8)&0xFF)|(RDB_14BITLEN<<6);
         buf[1] = len&0xFF;
         if (rdbWriteRaw(rdb,buf,2) == -1) return -1;
         nwritten = 2;
     } else if (len <= UINT32_MAX) {
         /* Save a 32 bit len */
+		//10|000000
         buf[0] = RDB_32BITLEN;
         if (rdbWriteRaw(rdb,buf,1) == -1) return -1;
+		//len转换为大端法
         uint32_t len32 = htonl(len);
         if (rdbWriteRaw(rdb,&len32,4) == -1) return -1;
         nwritten = 1+4;
@@ -202,12 +208,14 @@ uint64_t rdbLoadLen(rio *rdb, int *isencoded) {
  * representation is stored in the buffer pointer to by "enc" and the string
  * length is returned. Otherwise 0 is returned. */
 int rdbEncodeInteger(long long value, unsigned char *enc) {
+	//value [-128, 127]
     if (value >= -(1<<7) && value <= (1<<7)-1) {
         enc[0] = (RDB_ENCVAL<<6)|RDB_ENC_INT8;
         enc[1] = value&0xFF;
         return 2;
     } else if (value >= -(1<<15) && value <= (1<<15)-1) {
         enc[0] = (RDB_ENCVAL<<6)|RDB_ENC_INT16;
+		//小端法
         enc[1] = value&0xFF;
         enc[2] = (value>>8)&0xFF;
         return 3;
@@ -428,9 +436,11 @@ int rdbSaveStringObject(rio *rdb, robj *obj) {
     /* Avoid to decode the object, then encode it again, if the
      * object is already integer encoded. */
     if (obj->encoding == OBJ_ENCODING_INT) {
+		//如果obj->ptr存储的是整数
         return rdbSaveLongLongAsStringObject(rdb,(long)obj->ptr);
     } else {
         serverAssertWithInfo(NULL,obj,sdsEncodedObject(obj));
+		//如果obj->ptr存储的字符串首地址
         return rdbSaveRawString(rdb,obj->ptr,sdslen(obj->ptr));
     }
 }
@@ -811,9 +821,13 @@ int rdbSaveKeyValuePair(rio *rdb, robj *key, robj *val,
                         long long expiretime, long long now)
 {
     /* Save the expire time */
+	//expiretime = -1表示expire为空
     if (expiretime != -1) {
         /* If this key is already expired skip it */
+		//过期key不存入rdb文件
         if (expiretime < now) return 0;
+		//没有过期的key
+		//EXPIRETIME_MS常量252
         if (rdbSaveType(rdb,RDB_OPCODE_EXPIRETIME_MS) == -1) return -1;
         if (rdbSaveMillisecondTime(rdb,expiretime) == -1) return -1;
     }
@@ -848,6 +862,7 @@ int rdbSaveAuxFieldStrInt(rio *rdb, char *key, long long val) {
 
 /* Save a few default AUX fields with information about the RDB generated. */
 int rdbSaveInfoAuxFields(rio *rdb, int flags, rdbSaveInfo *rsi) {
+	//判断是32bits还是64bits
     int redis_bits = (sizeof(void*) == 8) ? 64 : 32;
     int aof_preamble = (flags & RDB_SAVE_AOF_PREAMBLE) != 0;
 
@@ -878,6 +893,20 @@ int rdbSaveInfoAuxFields(rio *rdb, int flags, rdbSaveInfo *rsi) {
  * When the function returns C_ERR and if 'error' is not NULL, the
  * integer pointed by 'error' is set to the value of errno just after the I/O
  * error. */
+
+/*
+ *  |-------|-----|----------|--------|----------|--------|--------------|------------------------
+ *  | REDIS | 008 | SELECTDB | Nth_DB | RESIZEDB | db_szie| expires_size |
+ *  |-------|-----|----------|--------|----------|--------|--------------|-------------------------
+ *  1.REDIS 常量
+ *  2.008 RDB版本号，常量
+ *  3.SELECTD 常量，254
+ *  4.Nth_DB表示第N个数据库
+ *  5.RESIZEDB常量
+ *  6.db_size表示第N个db中entry的数目
+ * 
+ */
+ 
 int rdbSaveRio(rio *rdb, int *error, int flags, rdbSaveInfo *rsi) {
     dictIterator *di = NULL;
     dictEntry *de;
@@ -887,21 +916,28 @@ int rdbSaveRio(rio *rdb, int *error, int flags, rdbSaveInfo *rsi) {
     uint64_t cksum;
     size_t processed = 0;
 
+	//use rdb checksum
     if (server.rdb_checksum)
         rdb->update_cksum = rioGenericUpdateChecksum;
     snprintf(magic,sizeof(magic),"REDIS%04d",RDB_VERSION);
+	//设置rdb文件的REDIS字段和rdb版本号
     if (rdbWriteRaw(rdb,magic,9) == -1) goto werr;
+	//????
     if (rdbSaveInfoAuxFields(rdb,flags,rsi) == -1) goto werr;
 
     for (j = 0; j < server.dbnum; j++) {
         redisDb *db = server.db+j;
         dict *d = db->dict;
+		//该db为空
         if (dictSize(d) == 0) continue;
+		//此时不能进行rehash/insert/delete
         di = dictGetSafeIterator(d);
         if (!di) return C_ERR;
 
         /* Write the SELECT DB opcode */
+		//SELECTDB:254表示一个db开始
         if (rdbSaveType(rdb,RDB_OPCODE_SELECTDB) == -1) goto werr;
+		//第j个db
         if (rdbSaveLen(rdb,j) == -1) goto werr;
 
         /* Write the RESIZE DB opcode. We trim the size to UINT32_MAX, which
@@ -909,29 +945,34 @@ int rdbSaveRio(rio *rdb, int *error, int flags, rdbSaveInfo *rsi) {
          * However this does not limit the actual size of the DB to load since
          * these sizes are just hints to resize the hash tables. */
         uint32_t db_size, expires_size;
+		//dict中Entry的数量
         db_size = (dictSize(db->dict) <= UINT32_MAX) ?
                                 dictSize(db->dict) :
                                 UINT32_MAX;
         expires_size = (dictSize(db->expires) <= UINT32_MAX) ?
                                 dictSize(db->expires) :
                                 UINT32_MAX;
+		//251
         if (rdbSaveType(rdb,RDB_OPCODE_RESIZEDB) == -1) goto werr;
         if (rdbSaveLen(rdb,db_size) == -1) goto werr;
         if (rdbSaveLen(rdb,expires_size) == -1) goto werr;
 
         /* Iterate this DB writing every entry */
+	    //遍历当前db的所有entry
         while((de = dictNext(di)) != NULL) {
             sds keystr = dictGetKey(de);
             robj key, *o = dictGetVal(de);
             long long expire;
 
             initStaticStringObject(key,keystr);
+			//获取key对应的expire,即失效时间
             expire = getExpire(db,&key);
             if (rdbSaveKeyValuePair(rdb,&key,o,expire,now) == -1) goto werr;
 
             /* When this RDB is produced as part of an AOF rewrite, move
              * accumulated diff from parent to child while rewriting in
              * order to have a smaller final write. */
+			//rdb作为aof的前缀,获取父进程的
             if (flags & RDB_SAVE_AOF_PREAMBLE &&
                 rdb->processed_bytes > processed+AOF_READ_DIFF_INTERVAL_BYTES)
             {
@@ -993,9 +1034,11 @@ int rdbSave(char *filename, rdbSaveInfo *rsi) {
     rio rdb;
     int error = 0;
 
+	//temp-${pid}.rdb
     snprintf(tmpfile,256,"temp-%d.rdb", (int) getpid());
     fp = fopen(tmpfile,"w");
     if (!fp) {
+		//获取绝对路径
         char *cwdp = getcwd(cwd,MAXPATHLEN);
         serverLog(LL_WARNING,
             "Failed opening the RDB file %s (in server root dir %s) "
@@ -1045,6 +1088,7 @@ werr:
     return C_ERR;
 }
 
+//RDB写文件
 int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
     pid_t childpid;
     long long start;
@@ -1053,13 +1097,16 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
 
     server.dirty_before_bgsave = server.dirty;
     server.lastbgsave_try = time(NULL);
+	//打开有名管道
     openChildInfoPipe();
 
     start = ustime();
     if ((childpid = fork()) == 0) {
+		//子进程start
         int retval;
 
         /* Child */
+		//fork之后，父进程的fd table同样在子进程中存在
         closeListeningSockets(0);
         redisSetProcTitle("redis-rdb-bgsave");
         retval = rdbSave(filename,rsi);

@@ -38,7 +38,7 @@ void openChildInfoPipe(void) {
         /* On error our two file descriptors should be still set to -1,
          * but we call anyway cloesChildInfoPipe() since can't hurt. */
         closeChildInfoPipe();
-    } else if (anetNonBlock(NULL,server.child_info_pipe[0]) != ANET_OK) {
+    } else if (anetNonBlock(NULL,server.child_info_pipe[0]) != ANET_OK) { //设置为非阻塞
         closeChildInfoPipe();
     } else {
         memset(&server.child_info_data,0,sizeof(server.child_info_data));

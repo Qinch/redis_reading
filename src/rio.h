@@ -85,6 +85,7 @@ static inline size_t rioRead(rio *r, void *buf, size_t len) {
     return 1;
 }
 
+//获取偏移量
 static inline off_t rioTell(rio *r) {
     return r->tell(r);
 }
