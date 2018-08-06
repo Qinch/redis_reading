@@ -62,6 +62,10 @@ static inline void	 swapfunc (char *, char *, size_t, int);
         } while (--i > 0);				\
 }
 
+//swaptype=0 means a的首地址为sizeof(long)整数倍，且每个element的大小为sizeof(long)
+//swaptype=1 means a的首地址为sizeof(long)整数倍，且每个elemnt大小为sizeof(long)整数倍，但是不等于sizeof(log)
+//swaptype=2 means a的首地址为sizeof(long)整数倍，且每个元素大小不等于sizeof(log)整数倍
+//swaptype= other means a的首地址不是sizeof(long)的整数倍
 #define SWAPINIT(a, es) swaptype = ((char *)a - (char *)0) % sizeof(long) || \
 	es % sizeof(long) ? 2 : es == sizeof(long)? 0 : 1;
 
